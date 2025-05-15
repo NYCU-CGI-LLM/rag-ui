@@ -153,7 +153,7 @@ function EvaluationInterface({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="run">Run Evaluation</TabsTrigger>
@@ -348,7 +348,7 @@ export default function EvalPage() {
 
   return (
     <PageLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 p-4">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">RAG Evaluation</h1>

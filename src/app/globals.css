@@ -43,7 +43,9 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root {
+/* Original Theme - Light Mode */
+:root.original-theme,
+:root:not(.neobrutalism-theme) {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -78,7 +80,9 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
+/* Original Theme - Dark Mode */
+.dark:root.original-theme,
+.dark:root:not(.neobrutalism-theme) {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -112,6 +116,81 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Neobrutalism Theme - Light Mode */
+:root.neobrutalism-theme {
+  /* Neobrutalism style with slightly rounded corners like in the image */
+  --radius: 0.5rem;
+  /* Light cream/beige background with black text for high contrast */
+  --background: #FAF5ED;
+  --foreground: #212121;
+  --card: #FFFFFF;
+  --card-foreground: #212121;
+  --popover: #FFFFFF;
+  --popover-foreground: #212121;
+  /* Bold primary color - blue from the image */
+  --primary: #8BA3E0;
+  --primary-foreground: #FFFFFF;
+  --secondary: #00B399;
+  --secondary-foreground: #FFFFFF;
+  --muted: #F0F0F0;
+  --muted-foreground: #666666;
+  --accent: #FF87B8;
+  --accent-foreground: #FFFFFF;
+  --destructive: #FF0054;
+  /* Thick, bold borders */
+  --border: #212121;
+  --input: #212121;
+  --ring: #212121;
+  --chart-1: #8BA3E0;
+  --chart-2: #00B399;
+  --chart-3: #FF87B8;
+  --chart-4: #FFD02F;
+  --chart-5: #F56666;
+  --sidebar: #F0F0F0;
+  --sidebar-foreground: #212121;
+  --sidebar-primary: #8BA3E0;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #FF87B8;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #212121;
+  --sidebar-ring: #212121;
+}
+
+/* Neobrutalism Theme - Dark Mode */
+.dark:root.neobrutalism-theme {
+  --background: #222222;
+  --foreground: #FFFFFF;
+  --card: #2A2A2A;
+  --card-foreground: #FFFFFF;
+  --popover: #2A2A2A;
+  --popover-foreground: #FFFFFF;
+  --primary: #8BA3E0;
+  --primary-foreground: #FFFFFF;
+  --secondary: #00B399;
+  --secondary-foreground: #FFFFFF;
+  --muted: #333333;
+  --muted-foreground: #AAAAAA;
+  --accent: #FF87B8;
+  --accent-foreground: #FFFFFF;
+  --destructive: #FF0054;
+  --border: #FFFFFF;
+  --input: #FFFFFF;
+  --ring: #FFFFFF;
+  --chart-1: #8BA3E0;
+  --chart-2: #00B399;
+  --chart-3: #FF87B8;
+  --chart-4: #FFD02F;
+  --chart-5: #F56666;
+  --sidebar: #2A2A2A;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #8BA3E0;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #FF87B8;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #FFFFFF;
+  --sidebar-ring: #FFFFFF;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -119,4 +198,163 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Neobrutalism styles that only apply to neobrutalism theme */
+:root.neobrutalism-theme .neobrutalism,
+.neobrutalism-theme .neobrutalism {
+  /* Shadow effect for neobrutalist elements */
+  box-shadow: 4px 4px 0 0 #212121;
+  border: 3px solid #212121;
+  transform: translate(0, 0);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+:root.neobrutalism-theme .neobrutalism:hover,
+.neobrutalism-theme .neobrutalism:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 #212121;
+}
+
+:root.neobrutalism-theme .neobrutalism:active,
+.neobrutalism-theme .neobrutalism:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 0 #212121;
+}
+
+/* Dark mode neobrutalism adjustments */
+.dark:root.neobrutalism-theme .neobrutalism,
+.dark.neobrutalism-theme .neobrutalism {
+  box-shadow: 4px 4px 0 0 #FFFFFF;
+  border: 3px solid #FFFFFF;
+}
+
+.dark:root.neobrutalism-theme .neobrutalism:hover,
+.dark.neobrutalism-theme .neobrutalism:hover {
+  box-shadow: 6px 6px 0 0 #FFFFFF;
+}
+
+.dark:root.neobrutalism-theme .neobrutalism:active,
+.dark.neobrutalism-theme .neobrutalism:active {
+  box-shadow: 2px 2px 0 0 #FFFFFF;
+}
+
+/* Chat specific styling for neobrutalism theme */
+:root.neobrutalism-theme .border-r,
+.neobrutalism-theme .border-r {
+  border-right-width: 4px;
+}
+
+:root.neobrutalism-theme .border-l,
+.neobrutalism-theme .border-l {
+  border-left-width: 4px;
+}
+
+:root.neobrutalism-theme [class*="chat-item"],
+.neobrutalism-theme [class*="chat-item"] {
+  border-bottom: 4px solid #212121;
+  margin-bottom: 0;
+  border-top: none;
+  border-left: none;
+  transition: all 0.2s ease;
+}
+
+:root.neobrutalism-theme [class*="chat-item"]:hover,
+.neobrutalism-theme [class*="chat-item"]:hover {
+  background-color: #FF87B8 !important;
+  color: #FFFFFF !important;
+  transform: translateX(-2px);
+}
+
+/* Dark mode neobrutalism chat adjustments */
+.dark:root.neobrutalism-theme [class*="chat-item"],
+.dark.neobrutalism-theme [class*="chat-item"] {
+  border-bottom: 4px solid #FFFFFF;
+  border-top: none;
+  border-left: none;
+}
+
+.dark:root.neobrutalism-theme [class*="chat-item"]:hover,
+.dark.neobrutalism-theme [class*="chat-item"]:hover {
+  background-color: #8BA3E0 !important;
+  color: #FFFFFF !important;
+  transform: translateX(-2px);
+}
+
+/* Additional neobrutalism styles for dialog items */
+:root.neobrutalism-theme [class*="rounded-lg"],
+.neobrutalism-theme [class*="rounded-lg"] {
+  border-radius: 0;
+}
+
+:root.neobrutalism-theme .dialog-item,
+.neobrutalism-theme .dialog-item {
+  border-right: 4px solid #212121;
+  border-bottom: 4px solid #212121;
+  border-top: none;
+  border-left: none;
+  transition: all 0.2s ease;
+}
+
+:root.neobrutalism-theme .dialog-item:hover,
+.neobrutalism-theme .dialog-item:hover {
+  background-color: #FF87B8 !important;
+  color: #FFFFFF !important;
+  transform: translateX(-2px);
+}
+
+.dark:root.neobrutalism-theme .dialog-item,
+.dark.neobrutalism-theme .dialog-item {
+  border-right: 4px solid #FFFFFF;
+  border-bottom: 4px solid #FFFFFF;
+  border-top: none;
+  border-left: none;
+  transition: all 0.2s ease;
+}
+
+.dark:root.neobrutalism-theme .dialog-item:hover,
+.dark.neobrutalism-theme .dialog-item:hover {
+  background-color: #8BA3E0 !important;
+  color: #FFFFFF !important;
+  transform: translateX(-2px);
+}
+
+/* Neobrutalism popover styling */
+:root.neobrutalism-theme [data-radix-popper-content-wrapper],
+.neobrutalism-theme [data-radix-popper-content-wrapper] {
+  border: 3px solid #212121 !important;
+  box-shadow: 4px 4px 0 0 #212121 !important;
+  border-radius: 0 !important;
+}
+
+.dark:root.neobrutalism-theme [data-radix-popper-content-wrapper],
+.dark.neobrutalism-theme [data-radix-popper-content-wrapper] {
+  border: 3px solid #FFFFFF !important;
+  box-shadow: 4px 4px 0 0 #FFFFFF !important;
+  border-radius: 0 !important;
+}
+
+.dark:root.neobrutalism-theme .dialog-item,
+.dark.neobrutalism-theme .dialog-item {
+  border-right: 4px solid #FFFFFF;
+  border-bottom: 4px solid #FFFFFF;
+  border-top: none;
+  border-left: none;
+  transition: all 0.2s ease;
+}
+
+/* Original theme - thinner borders */
+:root.original-theme button:not(.neobrutalism),
+:root:not(.neobrutalism-theme) button:not(.neobrutalism) {
+  border-width: 1px;
+}
+
+:root.original-theme .border-r,
+:root:not(.neobrutalism-theme) .border-r {
+  border-right-width: 1px;
+}
+
+:root.original-theme [class*="border"],
+:root:not(.neobrutalism-theme) [class*="border"] {
+  border-width: 1px;
 }

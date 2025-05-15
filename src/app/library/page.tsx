@@ -126,16 +126,10 @@ export default function LibraryPage() {
     setCurrentLibrary(null);
   };
 
-  const handleDeleteLibrary = (id: string) => {
-    setLibraries((prev) => prev.filter(lib => lib.id !== id));
-    if (currentLibrary?.id === id) {
-      setCurrentLibrary(null);
-    }
-  };
 
   return (
     <PageLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 p-4">
         {currentLibrary ? (
           // Document view when a library is selected
           <>
@@ -177,10 +171,7 @@ export default function LibraryPage() {
                         <td className="py-2 px-4">{file.name}</td>
                         <td className="py-2 px-4">{file.size}</td>
                         <td className="py-2 px-4">{file.uploadDate}</td>
-                        <td className="py-2 px-4 space-x-2">
-                          <button className="text-sm hover:text-primary">View</button>
-                          <button className="text-sm hover:text-destructive">Delete</button>
-                        </td>
+                        
                       </tr>
                     ))}
                   </tbody>
@@ -213,27 +204,6 @@ export default function LibraryPage() {
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
                       <CardTitle>{library.name}</CardTitle>
-                      <div className="flex gap-2">
-                        <button 
-                          className="text-sm hover:text-primary"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // In a real app, you'd implement edit functionality here
-                            console.log('Edit library:', library.id);
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button 
-                          className="text-sm hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteLibrary(library.id);
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
                     </div>
                     <CardDescription>{library.description}</CardDescription>
                   </CardHeader>

@@ -1,7 +1,8 @@
+'use client'
 import { PageLayout } from "@/components/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
+import { useState } from "react";
 import {
   Select,
   SelectContent,
@@ -9,27 +10,76 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+
+// Library data with descriptions
+const libraries = [
+  { 
+    id: "none", 
+    name: "No library", 
+    description: "" 
+  },
+  { 
+    id: "tech-docs", 
+    name: "Technical Docs", 
+    description: "Documentation for all technical systems and frameworks used in the organization." 
+  },
+  { 
+    id: "product-manuals", 
+    name: "Product Manuals", 
+    description: "User guides and specifications for all products in our catalog." 
+  },
+  { 
+    id: "research-papers", 
+    name: "Research Papers", 
+    description: "Academic papers and research conducted by our R&D department." 
+  },
+  { 
+    id: "company-wiki", 
+    name: "Company Wiki", 
+    description: "Internal knowledge base covering company policies, procedures and best practices." 
+  },
+];
 
 export default function ChatPage() {
+  const [selectedLibrary, setSelectedLibrary] = useState(libraries[0].id);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  
+  // Get the full description of the selected library
+  const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
+  
   return (
     <PageLayout>
       <div className="flex h-[calc(100vh-5rem)]">
         {/* Left Sidebar - Chat Sessions */}
-        <div className="hidden md:flex w-64 flex-col border-r p-4 overflow-y-auto">
-          <h2 className="font-semibold mb-4">Chat Sessions</h2>
-          <div className="space-y-2">
+        <div className="hidden md:flex w-64 flex-col border-r overflow-y-auto">
+          {/* Header with New Chat button */}
+          <div className="flex justify-between items-center p-4 border-b font-heading">
+            <h2 className="font-semibold text-lg">Chat Sessions</h2>
+            <Button variant="ghost" size="icon" className="h-8 w-8" title="New Chat">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              <span className="sr-only">New Chat</span>
+            </Button>
+          </div>
+          
+          {/* Chat list */}
+          <div className="flex flex-col">
             {['General Chat', 'Project Research', 'Meeting Notes', 'Technical Docs'].map((session, index) => (
               <div 
                 key={index} 
-                className={`p-2 rounded cursor-pointer hover:bg-accent ${index === 0 ? 'bg-accent' : ''}`}
+                className={`p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${index === 0 ? 'bg-accent text-accent-foreground' : ''}`}
               >
                 {session}
               </div>
             ))}
           </div>
-          <Button className="mt-4 w-full" variant="outline" size="sm">
-            New Chat
-          </Button>
         </div>
         
         {/* Main Chat Area */}
@@ -71,21 +121,51 @@ export default function ChatPage() {
         </div>
         
         {/* Right Sidebar - Libraries */}
-        <div className="hidden lg:flex w-64 flex-col border-l p-4 overflow-y-auto">
-          <h2 className="font-semibold mb-4">Selected Libraries</h2>
-          <div className="space-y-2">
-            {['Technical Docs', 'Product Manuals', 'Research Papers', 'Company Wiki'].map((library, index) => (
-              <div key={index} className="flex items-center space-x-2">
-                <Checkbox id={`library-${index}`} defaultChecked={index < 2} />
-                <label 
-                  htmlFor={`library-${index}`}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  {library}
-                </label>
+        <div className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto">
+          <h2 className="font-semibold mb-4 p-2 border-b pb-4 text-lg font-heading">Selected Library</h2>
+          
+          {/* Library selection with popover */}
+          <Popover open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
+            <PopoverTrigger asChild>
+              <Card className="cursor-pointer hover:bg-accent/50 transition-colors">
+                <CardContent className="pt-4">
+                  <div className="flex justify-between items-center">
+                    <div className="font-medium">{selectedLibraryData?.name}</div>
+                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m7 15 5 5 5-5"/>
+                        <path d="m7 9 5-5 5 5"/>
+                      </svg>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </PopoverTrigger>
+            
+            <PopoverContent className="w-[400px] p-0">
+              <div className="max-h-[60vh] overflow-y-auto">
+                {libraries.map((library) => (
+                  <div 
+                    key={library.id} 
+                    className={`p-4 cursor-pointer dialog-item ${
+                      library.id === selectedLibrary ? 'bg-accent text-accent-foreground' : ''
+                    }`}
+                    onClick={() => {
+                      setSelectedLibrary(library.id);
+                      setIsLibraryOpen(false);
+                    }}
+                  >
+                    <div className="text-base font-medium">{library.name}</div>
+                    {library.description && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {library.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </PopoverContent>
+          </Popover>
           
           <h3 className="font-semibold mt-6 mb-2">Search Settings</h3>
           <div className="space-y-4">
