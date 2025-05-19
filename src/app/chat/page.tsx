@@ -46,6 +46,43 @@ const libraries = [
   },
 ];
 
+// Chat message component for better structure
+interface ChatMessageProps {
+  isUser: boolean;
+  content: string;
+  timestamp?: string;
+  source?: string;
+}
+
+function ChatMessage({ isUser, content, timestamp = "Just now", source }: ChatMessageProps) {
+  // Base classes without the tail styling
+  const baseClasses = "p-4 shadow-sm transition-all duration-200 max-w-[85%] md:max-w-[75%] relative";
+  
+  // Different styling based on message sender with specific corner rounding
+  const messageClasses = isUser 
+    ? `${baseClasses} ml-auto chat-bubble-user bg-primary text-primary-foreground rounded-tl-lg rounded-bl-lg rounded-br-lg`
+    : `${baseClasses} mr-auto chat-bubble-ai bg-muted rounded-tr-lg rounded-bl-lg rounded-br-lg`;
+
+  return (
+    <div className={`mb-8 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={messageClasses}>
+        <div className="font-semibold mb-1">{isUser ? "You" : "AI Assistant"}</div>
+        <p className="whitespace-pre-wrap break-words">{content}</p>
+        {source && (
+          <div className="mt-3 pt-2 border-t border-border/30 text-xs text-muted-foreground flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+            <span>Source: {source}</span>
+          </div>
+        )}
+      </div>
+      <div className="text-xs text-muted-foreground mt-1 mx-2">{timestamp}</div>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [selectedLibrary, setSelectedLibrary] = useState(libraries[0].id);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -84,36 +121,37 @@ export default function ChatPage() {
         
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
-          <div className="flex-1 p-4 overflow-y-auto">
+          <div className="flex-1 p-6 overflow-y-auto">
             {/* Chat messages would go here */}
-            <div className="space-y-4">
-              <div className="bg-muted p-4 rounded-lg max-w-[80%]">
-                <div className="font-semibold mb-1">AI Assistant</div>
-                <p>Hello! How can I help you today?</p>
-              </div>
+            <div className="space-y-2 max-w-4xl mx-auto">
+              <ChatMessage 
+                isUser={false} 
+                content="Hello! How can I help you today?" 
+                timestamp="10:30 AM"
+              />
               
-              <div className="bg-primary text-primary-foreground p-4 rounded-lg max-w-[80%] ml-auto">
-                <div className="font-semibold mb-1">You</div>
-                <p>I need information about RAG systems from my technical documentation.</p>
-              </div>
+              <ChatMessage 
+                isUser={true} 
+                content="I need information about RAG systems from my technical documentation." 
+                timestamp="10:31 AM"
+              />
               
-              <div className="bg-muted p-4 rounded-lg max-w-[80%]">
-                <div className="font-semibold mb-1">AI Assistant</div>
-                <p>Based on your technical documentation, RAG (Retrieval-Augmented Generation) systems combine retrieval mechanisms with generative models. They retrieve relevant information from a knowledge base and then use that information to generate more accurate and contextually relevant responses.</p>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Source: Technical Documentation, Page 23
-                </div>
-              </div>
+              <ChatMessage 
+                isUser={false} 
+                content="Based on your technical documentation, RAG (Retrieval-Augmented Generation) systems combine retrieval mechanisms with generative models. They retrieve relevant information from a knowledge base and then use that information to generate more accurate and contextually relevant responses." 
+                timestamp="10:32 AM"
+                source="Technical Documentation, Page 23"
+              />
             </div>
           </div>
           
           {/* Input area */}
           <div className="border-t p-4">
-            <div className="flex">
+            <div className="flex max-w-4xl mx-auto">
               <Input 
                 type="text" 
                 placeholder="Type your message here..." 
-                className="flex-1 rounded-r-none"
+                className="flex-1 rounded-r-none focus-visible:ring-1"
               />
               <Button className="rounded-l-none">Send</Button>
             </div>

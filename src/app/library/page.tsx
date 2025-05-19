@@ -129,7 +129,7 @@ export default function LibraryPage() {
 
   return (
     <PageLayout>
-      <div className="space-y-6 p-4">
+      <div className="space-y-6 p-4 max-w-6xl mx-auto">
         {currentLibrary ? (
           // Document view when a library is selected
           <>

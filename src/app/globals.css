@@ -358,3 +358,70 @@
 :root:not(.neobrutalism-theme) [class*="border"] {
   border-width: 1px;
 }
+
+/* Custom Chat Bubble Styles for Original Theme */
+:root.original-theme .chat-bubble-ai,
+:root:not(.neobrutalism-theme) .chat-bubble-ai {
+  box-shadow: none;
+  border: none;
+  background-color: var(--muted);
+}
+
+:root.original-theme .chat-bubble-user,
+:root:not(.neobrutalism-theme) .chat-bubble-user {
+  box-shadow: none;
+}
+
+/* Neobrutalism Chat Bubble Styles */
+:root.neobrutalism-theme .chat-bubble-ai,
+.neobrutalism-theme .chat-bubble-ai {
+  border: none;
+  box-shadow: none;
+  transform: none;
+  transition: none;
+  border-radius: 0.5rem !important;
+  background-color: var(--muted);
+}
+
+:root.neobrutalism-theme .chat-bubble-ai:hover,
+.neobrutalism-theme .chat-bubble-ai:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+:root.neobrutalism-theme .chat-bubble-user,
+.neobrutalism-theme .chat-bubble-user {
+  border: none;
+  box-shadow: none;
+  transform: none;
+  transition: none;
+  border-radius: 0.5rem !important;
+}
+
+:root.neobrutalism-theme .chat-bubble-user:hover,
+.neobrutalism-theme .chat-bubble-user:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Dark mode neobrutalism chat bubbles */
+.dark:root.neobrutalism-theme .chat-bubble-ai,
+.dark.neobrutalism-theme .chat-bubble-ai,
+.dark:root.neobrutalism-theme .chat-bubble-user,
+.dark.neobrutalism-theme .chat-bubble-user {
+  border: none;
+  box-shadow: none;
+}
+
+.dark:root.neobrutalism-theme .chat-bubble-ai:hover,
+.dark.neobrutalism-theme .chat-bubble-ai:hover,
+.dark:root.neobrutalism-theme .chat-bubble-user:hover,
+.dark.neobrutalism-theme .chat-bubble-user:hover {
+  box-shadow: none;
+}
+
+/* Hide all tails on chat bubbles */
+:root .chat-bubble-ai:after, :root .chat-bubble-user:after, 
+.dark:root .chat-bubble-ai:after, .dark:root .chat-bubble-user:after {
+  display: none !important;
+}

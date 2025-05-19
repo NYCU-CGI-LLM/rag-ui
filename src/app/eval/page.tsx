@@ -348,7 +348,7 @@ export default function EvalPage() {
 
   return (
     <PageLayout>
-      <div className="space-y-6 p-4">
+      <div className="space-y-6 p-4 max-w-6xl mx-auto">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">RAG Evaluation</h1>

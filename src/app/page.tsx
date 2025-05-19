@@ -5,7 +5,7 @@ import Link from "next/link";
 export default function Home() {
   return (
     <PageLayout>
-      <div className="space-y-8 py-12">
+      <div className="space-y-8 py-12 max-w-6xl mx-auto">
         <div className="space-y-2 text-center">
           <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">
             Retrieval-Augmented Generation UI
