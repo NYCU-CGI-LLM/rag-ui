@@ -57,7 +57,7 @@ export default function ChatPage() {
     <PageLayout>
       <div className="flex h-[calc(100vh-5rem)]">
         {/* Left Sidebar - Chat Sessions */}
-        <div className="hidden md:flex w-64 flex-col border-r overflow-y-auto">
+        <aside className="hidden md:flex w-64 flex-col border-r overflow-y-auto">
           {/* Header with New Chat button */}
           <div className="flex justify-between items-center p-4 border-b font-heading">
             <h2 className="font-semibold text-lg">Chat Sessions</h2>
@@ -80,7 +80,7 @@ export default function ChatPage() {
               </div>
             ))}
           </div>
-        </div>
+        </aside>
         
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
@@ -121,7 +121,7 @@ export default function ChatPage() {
         </div>
         
         {/* Right Sidebar - Libraries */}
-        <div className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto">
+        <aside className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto">
           <h2 className="font-semibold mb-4 p-2 border-b pb-4 text-lg font-heading">Selected Library</h2>
           
           {/* Library selection with popover */}
@@ -199,7 +199,7 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
-        </div>
+        </aside>
       </div>
     </PageLayout>
   );
