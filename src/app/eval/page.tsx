@@ -407,10 +407,6 @@ export default function EvalPage() {
               Evaluate different RAG implementations on standardized sources.
             </p>
           </div>
-          <div className="space-x-2">
-            <Button variant="outline">Import Source</Button>
-            <Button>Create New Source</Button>
-          </div>
         </div>
 
         <EvaluationInterface ragSystems={ragSystems} sources={sources} />
