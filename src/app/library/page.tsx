@@ -146,7 +146,7 @@ export default function LibraryPage() {
             <div className="mt-6">
               <div className="flex mb-4">
                 <Button variant="outline" className="mr-2">Upload Files</Button>
-                <Button variant="outline" className="mr-2">Manage Embeddings</Button>
+                
                 <div className="flex-1"></div>
                 <Input 
                   type="text" 
