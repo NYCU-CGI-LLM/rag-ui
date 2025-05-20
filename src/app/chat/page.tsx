@@ -2,7 +2,7 @@
 import { PageLayout } from "@/components/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -47,14 +47,15 @@ const libraries = [
 ];
 
 // Chat message component for better structure
-interface ChatMessageProps {
+interface Message {
+  id: string;
   isUser: boolean;
   content: string;
   timestamp?: string;
   source?: string;
 }
 
-function ChatMessage({ isUser, content, timestamp = "Just now", source }: ChatMessageProps) {
+function ChatMessage({ isUser, content, timestamp = "Just now", source }: Omit<Message, 'id'>) {
   // Base classes without the tail styling
   const baseClasses = "p-4 shadow-sm transition-all duration-200 max-w-[85%] md:max-w-[75%] relative";
   
@@ -86,9 +87,73 @@ function ChatMessage({ isUser, content, timestamp = "Just now", source }: ChatMe
 export default function ChatPage() {
   const [selectedLibrary, setSelectedLibrary] = useState(libraries[0].id);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "initial-ai-message",
+      isUser: false,
+      content: "Hello! How can I help you today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    },
+  ]);
+  const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   
   // Get the full description of the selected library
   const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
+
+  const handleSendMessage = async () => {
+    if (inputValue.trim() === "" || isLoading) return;
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      isUser: true,
+      content: inputValue,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    setInputValue("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: inputValue, result_column: "generated_texts" }), // Assuming result_column is fixed or can be made dynamic if needed
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch response from AI');
+      }
+
+      const data = await response.json();
+
+      const aiContent = data.result;
+
+      const aiMessage: Message = {
+        id: `ai-${Date.now()}`,
+        isUser: false,
+        content: aiContent || "Sorry, I couldn't process that.", // Fallback if aiContent is null/undefined
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        // source: data.source // If your API returns a source, uncomment and use it
+      };
+      setMessages((prevMessages) => [...prevMessages, aiMessage]);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        isUser: false,
+        content: error instanceof Error ? error.message : "An unknown error occurred.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prevMessages) => [...prevMessages, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   return (
     <PageLayout>
@@ -122,26 +187,23 @@ export default function ChatPage() {
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
           <div className="flex-1 p-6 overflow-y-auto">
-            {/* Chat messages would go here */}
             <div className="space-y-2 max-w-4xl mx-auto">
-              <ChatMessage 
-                isUser={false} 
-                content="Hello! How can I help you today?" 
-                timestamp="10:30 AM"
-              />
-              
-              <ChatMessage 
-                isUser={true} 
-                content="I need information about RAG systems from my technical documentation." 
-                timestamp="10:31 AM"
-              />
-              
-              <ChatMessage 
-                isUser={false} 
-                content="Based on your technical documentation, RAG (Retrieval-Augmented Generation) systems combine retrieval mechanisms with generative models. They retrieve relevant information from a knowledge base and then use that information to generate more accurate and contextually relevant responses." 
-                timestamp="10:32 AM"
-                source="Technical Documentation, Page 23"
-              />
+              {messages.map((msg) => (
+                <ChatMessage
+                  key={msg.id}
+                  isUser={msg.isUser}
+                  content={msg.content}
+                  timestamp={msg.timestamp}
+                  source={msg.source}
+                />
+              ))}
+               {isLoading && (
+                <ChatMessage
+                  isUser={false}
+                  content="AI Assistant is typing..."
+                  timestamp={new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                />
+              )}
             </div>
           </div>
           
@@ -151,9 +213,29 @@ export default function ChatPage() {
               <Input 
                 type="text" 
                 placeholder="Type your message here..." 
-                className="flex-1 rounded-r-none focus-visible:ring-1"
+                className="flex-1 rounded-r-none focus-visible:ring-1 text-black"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                disabled={isLoading}
               />
-              <Button className="rounded-l-none">Send</Button>
+              <Button 
+                className="rounded-l-none text-black"
+                onClick={handleSendMessage} 
+                disabled={isLoading || inputValue.trim() === ""}
+              >
+                {isLoading ? (
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : "Send"}
+              </Button>
             </div>
           </div>
         </div>
