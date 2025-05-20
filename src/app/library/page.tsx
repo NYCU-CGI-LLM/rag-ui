@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -20,8 +21,11 @@ import {
   DialogHeader, 
   DialogTitle,
   DialogDescription,
-  DialogFooter
+  DialogFooter,
+  DialogTrigger,
+  DialogClose
 } from "@/components/ui/dialog";
+import { Trash2 } from 'lucide-react';
 
 // Define types
 interface Library {
@@ -46,6 +50,8 @@ export default function LibraryPage() {
   const [isCreatingLibrary, setIsCreatingLibrary] = useState(false);
   const [newLibraryName, setNewLibraryName] = useState("");
   const [newLibraryDescription, setNewLibraryDescription] = useState("");
+  const [selectedDocuments, setSelectedDocuments] = useState<number[]>([]);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   // Initialize with demo data
   useEffect(() => {
@@ -120,12 +126,43 @@ export default function LibraryPage() {
 
   const handleSelectLibrary = (library: Library) => {
     setCurrentLibrary(library);
+    setSelectedDocuments([]);
   };
 
   const handleBackToLibraries = () => {
     setCurrentLibrary(null);
+    setSelectedDocuments([]);
   };
 
+  const toggleDocumentSelection = (docId: number) => {
+    setSelectedDocuments((prevSelected) =>
+      prevSelected.includes(docId)
+        ? prevSelected.filter((id) => id !== docId)
+        : [...prevSelected, docId]
+    );
+  };
+
+  const toggleSelectAllDocuments = () => {
+    if (selectedDocuments.length === documents.length) {
+      setSelectedDocuments([]);
+    } else {
+      setSelectedDocuments(documents.map((doc) => doc.id));
+    }
+  };
+
+  const handleDeleteSelectedDocuments = () => {
+    setDocuments((prevDocs) =>
+      prevDocs.filter((doc) => !selectedDocuments.includes(doc.id))
+    );
+    if (currentLibrary) {
+        const newFileCount = currentLibrary.fileCount - selectedDocuments.length;
+        const updatedLibrary = { ...currentLibrary, fileCount: newFileCount > 0 ? newFileCount : 0 };
+        setCurrentLibrary(updatedLibrary);
+        setLibraries(prevLibs => prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib));
+    }
+    setSelectedDocuments([]);
+    setIsDeleteDialogOpen(false);
+  };
 
   return (
     <PageLayout>
@@ -144,9 +181,30 @@ export default function LibraryPage() {
             </div>
             
             <div className="mt-6">
-              <div className="flex mb-4">
+              <div className="flex mb-4 items-center">
                 <Button variant="outline" className="mr-2">Upload Files</Button>
-                
+                {selectedDocuments.length > 0 && (
+                  <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="destructive" className="mr-2">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete ({selectedDocuments.length})
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Are you sure?</DialogTitle>
+                        <DialogDescription>
+                          This action cannot be undone. This will permanently delete the selected file(s).
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleDeleteSelectedDocuments}>Delete</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
                 <div className="flex-1"></div>
                 <Input 
                   type="text" 
@@ -155,28 +213,48 @@ export default function LibraryPage() {
                 />
               </div>
               
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="text-left py-2 px-4">File Name</th>
-                      <th className="text-left py-2 px-4">Size</th>
-                      <th className="text-left py-2 px-4">Upload Date</th>
-                      <th className="text-left py-2 px-4">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {documents.map((file) => (
-                      <tr key={file.id} className="border-t">
-                        <td className="py-2 px-4">{file.name}</td>
-                        <td className="py-2 px-4">{file.size}</td>
-                        <td className="py-2 px-4">{file.uploadDate}</td>
-                        
+              {documents.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="py-2 px-4 text-left w-10">
+                          <Checkbox
+                            checked={documents.length > 0 && selectedDocuments.length === documents.length}
+                            onCheckedChange={toggleSelectAllDocuments}
+                            aria-label="Select all documents"
+                          />
+                        </th>
+                        <th className="text-left py-2 px-4">File Name</th>
+                        <th className="text-left py-2 px-4">Size</th>
+                        <th className="text-left py-2 px-4">Upload Date</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {documents.map((file) => (
+                        <tr key={file.id} className="border-t">
+                          <td className="py-2 px-4">
+                            <Checkbox
+                              checked={selectedDocuments.includes(file.id)}
+                              onCheckedChange={() => toggleDocumentSelection(file.id)}
+                              aria-label={`Select document ${file.name}`}
+                            />
+                          </td>
+                          <td className="py-2 px-4">{file.name}</td>
+                          <td className="py-2 px-4">{file.size}</td>
+                          <td className="py-2 px-4">{file.uploadDate}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Card className="mt-4 text-center">
+                  <CardContent className="p-6">
+                    <p className="text-muted-foreground">No documents in this library yet.</p>
+                  </CardContent>
+                </Card>
+              )}
               
               <Card className="mt-4 border-dashed text-center">
                 <CardContent className="p-6">
