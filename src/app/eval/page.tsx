@@ -344,24 +344,31 @@ export default function EvalPage() {
 
     const demoSystemBenchmarks: Source[] = [
       {
-        id: "bench1",
-        name: "Information Retrieval",
-        description: "Evaluates the system's ability to retrieve relevant documents",
-        metrics: ["precision", "recall", "f1_score", "retrieval_time"],
+        id: "longbench_hotpotqa",
+        name: "LongBench/HotpotQA",
+        description: "Question answering over multiple supporting documents, requiring reasoning.",
+        metrics: ["Exact Match (EM)", "F1 Score", "Answer Recall", "Retrieval Precision"],
         type: 'benchmark'
       },
       {
-        id: "bench2",
-        name: "Answer Generation",
-        description: "Evaluates the quality and accuracy of generated answers",
-        metrics: ["accuracy", "completeness", "coherence", "response_time"],
+        id: "longbench_narrativeqa",
+        name: "LongBench/NarrativeQA",
+        description: "Question answering based on stories or books, requiring understanding of narratives.",
+        metrics: ["ROUGE-L", "BLEU-4", "METEOR", "Answer Faithfulness"],
         type: 'benchmark'
       },
       {
-        id: "bench3",
-        name: "Hallucination Detection",
-        description: "Measures the system's tendency to generate false information",
-        metrics: ["hallucination_rate", "groundedness", "source_consistency"],
+        id: "techqa",
+        name: "TechQA",
+        description: "Technical question answering, often involving specialized vocabulary and concepts.",
+        metrics: ["Accuracy", "F1 Score (Technical Terms)", "Response Time", "Coverage"],
+        type: 'benchmark'
+      },
+      {
+        id: "emanual",
+        name: "E-manual",
+        description: "Question answering and information retrieval from electronic manuals.",
+        metrics: ["Task Success Rate", "Information Retrieval Accuracy", "Clarity Score"],
         type: 'benchmark'
       },
     ];
