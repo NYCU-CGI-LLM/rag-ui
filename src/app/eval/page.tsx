@@ -5,8 +5,12 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -29,22 +33,30 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 
+interface RAGSystemConfig {
+  availableMetrics: string[];
+  parser?: string;
+  chunker?: string;
+  indexer?: string;
+  generator?: string;
+  retriever?: string;
+}
+
 interface RAGSystem {
   id: string;
   name: string;
   description: string;
+  config: RAGSystemConfig;
 }
 
-// Updated interface: Source can be a benchmark or a library
 interface Source {
-  id: string;         // Unique ID, e.g., "bench1" or "lib_tech-docs"
-  name: string;       // Display name
+  id: string;
+  name: string;
   description: string;
   type: 'benchmark' | 'library';
-  metrics?: string[];  // Metrics for benchmarks, can be optional or a default for libraries
+  supported_metrics?: string[]; 
 }
 
-// Library interface (simplified for eval context, or could be imported if shared)
 interface LibraryStub {
   id: string;
   name: string;
@@ -65,7 +77,6 @@ interface EvaluationResults {
   status: "running" | "completed" | "failed";
 }
 
-// Default metrics for libraries if not specified
 const DEFAULT_LIBRARY_METRICS = ["accuracy", "relevance", "response_time"];
 
 function EvaluationInterface({
@@ -77,12 +88,28 @@ function EvaluationInterface({
 }) {
   const [selectedRAG, setSelectedRAG] = useState<string>("");
   const [selectedSource, setSelectedSource] = useState<string>("");
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [results, setResults] = useState<EvaluationResults[]>([]);
   const [activeTab, setActiveTab] = useState("run");
 
+  const currentRAGSystem = ragSystems.find(rs => rs.id === selectedRAG);
+  const currentSourceDetails = sources.find(s => s.id === selectedSource);
+
+  useEffect(() => {
+    setSelectedMetrics([]);
+  }, [selectedRAG]);
+
+  const handleMetricSelection = (metricId: string) => {
+    setSelectedMetrics(prev => 
+      prev.includes(metricId) 
+        ? prev.filter(m => m !== metricId)
+        : [...prev, metricId]
+    );
+  };
+
   const startEvaluation = async () => {
-    if (!selectedRAG || !selectedSource) return;
+    if (!selectedRAG || !selectedSource || !currentRAGSystem || selectedMetrics.length === 0) return;
 
     setIsEvaluating(true);
 
@@ -96,7 +123,6 @@ function EvaluationInterface({
       };
 
       setResults((prev) => [...prev, newResult]);
-
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
       setResults((prev) =>
@@ -106,22 +132,16 @@ function EvaluationInterface({
             result.sourceId === selectedSource &&
             result.status === "running"
           ) {
-            const currentSource = sources.find(
-              (s) => s.id === selectedSource
-            );
-
-            const metricsToEvaluate = currentSource?.metrics || (currentSource?.type === 'library' ? DEFAULT_LIBRARY_METRICS : []);
-            
-            const metrics = metricsToEvaluate.map((metric) => ({
+            const generatedMetrics = selectedMetrics.map((metric) => ({
               metric,
               value: Math.random() * 100,
-              unit: metric.includes("time") ? "ms" : metric.includes("rate") ? "%" : "",
+              unit: metric.toLowerCase().includes("time") ? "ms" : metric.toLowerCase().includes("rate") || metric.toLowerCase().includes("score") ? "%" : "",
             }));
 
             return {
               ...result,
               status: "completed",
-              metrics,
+              metrics: generatedMetrics,
             };
           }
           return result;
@@ -161,10 +181,6 @@ function EvaluationInterface({
     return source.type === 'benchmark' ? `Benchmark: ${source.name}` : `Library: ${source.name}`;
   };
 
-  const getCurrentSourceDetails = () => {
-    return sources.find(s => s.id === selectedSource);
-  }
-
   return (
     <div className="space-y-6 p-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -176,7 +192,7 @@ function EvaluationInterface({
         <TabsContent value="run" className="pt-4">
           <Card>
             <CardContent className="pt-6">
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="rag-system">RAG System</Label>
@@ -207,7 +223,7 @@ function EvaluationInterface({
                         <SelectValue placeholder="Select source" />
                       </SelectTrigger>
                       <SelectContent position="popper">
-                        {sources.map((source) => ( // Iterating over sources
+                        {sources.map((source) => (
                           <SelectItem key={source.id} value={source.id}>
                             {source.type === 'benchmark' ? 'Benchmark: ' : 'Library: '}{source.name}
                           </SelectItem>
@@ -217,31 +233,57 @@ function EvaluationInterface({
                   </div>
                 </div>
 
-                {selectedSource && getCurrentSourceDetails() && (
-                  <div className="rounded-md bg-muted p-4">
-                    <h3 className="font-medium mb-1">
-                      {getCurrentSourceDetails()?.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {getCurrentSourceDetails()?.description}
+                {currentRAGSystem && currentSourceDetails && (
+                  <Card className="bg-muted/50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg">Evaluation Configuration</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                        <div>
+                            <p><span className="font-semibold">RAG System:</span> {currentRAGSystem.name}</p>
+                            <p className="text-xs text-muted-foreground">{currentRAGSystem.description}</p>
+                        </div>
+                        <div className="pt-2 border-t">
+                            <p className="mt-2"><span className="font-semibold">Source:</span> {currentSourceDetails.name} ({currentSourceDetails.type})</p>
+                            <p className="text-xs text-muted-foreground">{currentSourceDetails.description}</p>
+                            {currentSourceDetails.type === 'benchmark' && currentSourceDetails.supported_metrics && (
+                                <p className="text-xs text-muted-foreground mt-1">Benchmark typically supports: {currentSourceDetails.supported_metrics.join(', ')}</p>
+                            )}
+                        </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {currentRAGSystem && (
+                  <div className="space-y-3 pt-3">
+                    <Label className="text-base font-medium">Select Metrics to Evaluate</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Choose from the metrics available for the selected RAG system ({currentRAGSystem.name}).
                     </p>
-                    {getCurrentSourceDetails()?.type === 'benchmark' && getCurrentSourceDetails()?.metrics && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Metrics: {getCurrentSourceDetails()?.metrics?.join(', ')}
-                      </p>
-                    )}
-                     {getCurrentSourceDetails()?.type === 'library' && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Default metrics will be applied: {DEFAULT_LIBRARY_METRICS.join(', ')}
-                      </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {currentRAGSystem.config.availableMetrics.map(metric => (
+                        <div key={metric} className="flex items-center space-x-2 p-2 border rounded-md hover:bg-accent/50">
+                          <Checkbox 
+                            id={`metric-${metric}`}
+                            checked={selectedMetrics.includes(metric)}
+                            onCheckedChange={() => handleMetricSelection(metric)}
+                          />
+                          <Label htmlFor={`metric-${metric}`} className="text-sm font-normal cursor-pointer">
+                            {metric}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                    {currentRAGSystem.config.availableMetrics.length === 0 && (
+                        <p className="text-sm text-muted-foreground">No metrics configured for this RAG system.</p>
                     )}
                   </div>
                 )}
 
                 <Button
-                  className="w-full"
+                  className="w-full pt-2"
                   onClick={startEvaluation}
-                  disabled={!selectedRAG || !selectedSource || isEvaluating}
+                  disabled={!selectedRAG || !selectedSource || selectedMetrics.length === 0 || isEvaluating}
                 >
                   {isEvaluating ? "Evaluating..." : "Start Evaluation"}
                 </Button>
@@ -251,7 +293,7 @@ function EvaluationInterface({
         </TabsContent>
 
         <TabsContent value="results" className="pt-4">
-          {results.length === 0 ? (
+           {results.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No evaluation results yet.</p>
             </div>
@@ -264,7 +306,7 @@ function EvaluationInterface({
                     <TableHead>Source</TableHead>
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Results</TableHead>
+                    <TableHead>Results (Selected Metrics)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -324,21 +366,37 @@ export default function EvalPage() {
   const [sources, setSources] = useState<Source[]>([]);
 
   useEffect(() => {
-    const demoRagSystems = [
+    const demoRagSystems: RAGSystem[] = [
       {
         id: "rag1",
         name: "Basic RAG",
-        description: "A simple RAG implementation using BM25 for retrieval",
+        description: "A simple RAG implementation using BM25 for retrieval and a basic LLM.",
+        config: {
+          availableMetrics: ["Exact Match (EM)", "Retrieval Precision", "Response Time", "Answer F1 Score"],
+          parser: "default_parser",
+          generator: "basic_llm"
+        }
       },
       {
         id: "rag2",
         name: "Semantic RAG",
-        description: "RAG with dense vector embeddings for semantic search",
+        description: "RAG with dense vector embeddings and a more advanced LLM.",
+        config: {
+          availableMetrics: ["F1 Score", "Answer Recall", "Semantic Similarity", "Hallucination Rate", "Retrieval MRR"],
+          parser: "markdown_parser",
+          indexer: "vector_db",
+          generator: "advanced_llm"
+        }
       },
       {
         id: "rag3",
         name: "Hybrid RAG",
-        description: "Combines keyword-based and semantic search for improved retrieval",
+        description: "Combines keyword-based and semantic search with a powerful LLM.",
+        config: {
+          availableMetrics: ["Overall Quality Score", "F1 Score", "Retrieval Recall", "Groundedness", "Toxicity Rate"],
+          retriever: "hybrid_rrf",
+          generator: "powerful_llm"
+        }
       },
     ];
 
@@ -347,36 +405,35 @@ export default function EvalPage() {
         id: "longbench_hotpotqa",
         name: "LongBench/HotpotQA",
         description: "Question answering over multiple supporting documents, requiring reasoning.",
-        metrics: ["Exact Match (EM)", "F1 Score", "Answer Recall", "Retrieval Precision"],
+        supported_metrics: ["Exact Match (EM)", "F1 Score", "Answer Recall", "Retrieval Precision"],
         type: 'benchmark'
       },
       {
         id: "longbench_narrativeqa",
         name: "LongBench/NarrativeQA",
         description: "Question answering based on stories or books, requiring understanding of narratives.",
-        metrics: ["ROUGE-L", "BLEU-4", "METEOR", "Answer Faithfulness"],
+        supported_metrics: ["ROUGE-L", "BLEU-4", "METEOR", "Answer Faithfulness"],
         type: 'benchmark'
       },
       {
         id: "techqa",
         name: "TechQA",
         description: "Technical question answering, often involving specialized vocabulary and concepts.",
-        metrics: ["Accuracy", "F1 Score (Technical Terms)", "Response Time", "Coverage"],
+        supported_metrics: ["Accuracy", "F1 Score (Technical Terms)", "Response Time", "Coverage"],
         type: 'benchmark'
       },
       {
         id: "emanual",
         name: "E-manual",
         description: "Question answering and information retrieval from electronic manuals.",
-        metrics: ["Task Success Rate", "Information Retrieval Accuracy", "Clarity Score"],
+        supported_metrics: ["Task Success Rate", "Information Retrieval Accuracy", "Clarity Score"],
         type: 'benchmark'
       },
     ];
 
-    // Simulate loading user libraries (similar to library page data)
     const demoUserLibraries: LibraryStub[] = [
       {
-        id: "tech_docs", // Using a simpler ID for the stub
+        id: "tech_docs",
         name: "Technical Documentation", 
         description: "Technical manuals and API documentation for eval"
       },
@@ -389,12 +446,12 @@ export default function EvalPage() {
 
     const librarySources: Source[] = demoUserLibraries.map(lib => ({
       ...lib,
-      id: `lib_${lib.id}`, // Prefix to ensure unique ID from benchmarks
+      id: `lib_${lib.id}`,
       type: 'library',
     }));
 
     setRagSystems(demoRagSystems);
-    setSources([...demoSystemBenchmarks, ...librarySources]); // Combine benchmarks and libraries
+    setSources([...demoSystemBenchmarks, ...librarySources]);
   }, []);
 
   return (
