@@ -358,9 +358,41 @@ function EvaluationInterface({
                         );
                         if (categoryMetrics.length === 0) return null;
 
+                        const categoryMetricIds = categoryMetrics.map(m => m.id);
+                        const selectedInCategoryCount = categoryMetricIds.filter(id => selectedMetrics.includes(id)).length;
+                        const allInCategorySelected = selectedInCategoryCount === categoryMetricIds.length;
+                        const noneInCategorySelected = selectedInCategoryCount === 0;
+
                         return (
                           <div key={category} className="pt-3">
-                            <h4 className="text-md font-semibold mb-2">{category === 'Retrieval Token' ? 'Retrieval Token Metrics' : `${category} Metrics`}</h4>
+                            <div className="flex items-center mb-2">
+                              <h4 className="text-md font-semibold mr-4">
+                                {category === 'Retrieval Token' ? 'Retrieval Token Metrics' : `${category} Metrics`}
+                              </h4>
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`select-all-${category.toLowerCase().replace(' ', '-')}`}
+                                  checked={
+                                    categoryMetricIds.length > 0 && allInCategorySelected
+                                      ? true
+                                      : noneInCategorySelected
+                                      ? false
+                                      : "indeterminate"
+                                  }
+                                  onCheckedChange={() => {
+                                    if (allInCategorySelected) {
+                                      setSelectedMetrics(prev => prev.filter(id => !categoryMetricIds.includes(id)));
+                                    } else {
+                                      setSelectedMetrics(prev => [...new Set([...prev, ...categoryMetricIds])]);
+                                    }
+                                  }}
+                                  disabled={!selectedSource || !selectedRAG}
+                                />
+                                <Label htmlFor={`select-all-${category.toLowerCase().replace(' ', '-')}`} className="text-sm font-normal cursor-pointer">
+                                  Select All
+                                </Label>
+                              </div>
+                            </div>
                             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                               {categoryMetrics.map(metric => (
                                 <div key={metric.id} className="flex items-center space-x-2 p-2 border rounded-md hover:bg-accent/50">
