@@ -78,7 +78,8 @@ interface EvaluationResultsMetric {
 interface EvaluationResults {
   systemId: string;
   sourceId: string;
-  timestamp: Date;
+  startTime: Date;
+  endTime?: Date;
   metrics: EvaluationResultsMetric[];
   status: "running" | "completed" | "failed";
 }
@@ -202,7 +203,7 @@ function EvaluationInterface({
       const newResult: EvaluationResults = {
         systemId: selectedRAG,
         sourceId: selectedSource,
-        timestamp: new Date(),
+        startTime: new Date(),
         metrics: [],
         status: "running",
       };
@@ -226,6 +227,7 @@ function EvaluationInterface({
             return {
               ...result,
               status: "completed",
+              endTime: new Date(),
               metrics: generatedMetrics,
             };
           }
@@ -246,6 +248,7 @@ function EvaluationInterface({
             return {
               ...result,
               status: "failed",
+              endTime: new Date(),
             };
           }
           return result;
@@ -264,6 +267,23 @@ function EvaluationInterface({
     const source = sources.find((s) => s.id === id);
     if (!source) return id;
     return source.type === 'benchmark' ? `Benchmark: ${source.name}` : `Library: ${source.name}`;
+  };
+
+  const formatDuration = (durationInMs: number): string => {
+    if (durationInMs < 0) return "0.0s";
+    return `${(durationInMs / 1000).toFixed(1)}s`;
+  };
+
+  const getDurationDisplay = (result: EvaluationResults): string | null => {
+    if (result.status === "completed" && result.startTime && result.endTime) {
+      const duration = result.endTime.getTime() - result.startTime.getTime();
+      return `Took: ${formatDuration(duration)}`;
+    }
+    if (result.status === "running" && result.startTime) {
+      const duration = Date.now() - result.startTime.getTime();
+      return `Running for: ${formatDuration(duration)}`;
+    }
+    return null;
   };
 
   return (
@@ -443,7 +463,8 @@ function EvaluationInterface({
                   <TableRow>
                     <TableHead>RAG System</TableHead>
                     <TableHead>Source</TableHead>
-                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Start Time</TableHead>
+                    <TableHead>End Time</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Results (Selected Metrics)</TableHead>
                   </TableRow>
@@ -454,7 +475,10 @@ function EvaluationInterface({
                       <TableCell>{getRAGSystemName(result.systemId)}</TableCell>
                       <TableCell>{getSourceName(result.sourceId)}</TableCell>
                       <TableCell>
-                        {result.timestamp.toLocaleString()}
+                        {result.startTime.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {result.endTime ? result.endTime.toLocaleString() : "N/A"}
                       </TableCell>
                       <TableCell>
                         <span
@@ -468,6 +492,11 @@ function EvaluationInterface({
                         >
                           {result.status}
                         </span>
+                        {getDurationDisplay(result) && (
+                          <p className="text-xs text-muted-foreground mt-0.5 pl-1">
+                            {getDurationDisplay(result)}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         {result.status === "completed" ? (
