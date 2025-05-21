@@ -195,25 +195,6 @@ function EvaluationInterface({
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="rag-system">RAG System</Label>
-                    <Select
-                      value={selectedRAG}
-                      onValueChange={setSelectedRAG}
-                    >
-                      <SelectTrigger id="rag-system">
-                        <SelectValue placeholder="Select RAG system" />
-                      </SelectTrigger>
-                      <SelectContent position="popper">
-                        {ragSystems.map((system) => (
-                          <SelectItem key={system.id} value={system.id}>
-                            {system.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="source">Source</Label>
                     <Select
                       value={selectedSource}
@@ -231,6 +212,25 @@ function EvaluationInterface({
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="rag-system">RAG System</Label>
+                    <Select
+                      value={selectedRAG}
+                      onValueChange={setSelectedRAG}
+                    >
+                      <SelectTrigger id="rag-system">
+                        <SelectValue placeholder="Select RAG system" />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        {ragSystems.map((system) => (
+                          <SelectItem key={system.id} value={system.id}>
+                            {system.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {currentRAGSystem && currentSourceDetails && (
@@ -240,15 +240,15 @@ function EvaluationInterface({
                     </CardHeader>
                     <CardContent className="space-y-3 text-sm">
                         <div>
-                            <p><span className="font-semibold">RAG System:</span> {currentRAGSystem.name}</p>
-                            <p className="text-xs text-muted-foreground">{currentRAGSystem.description}</p>
-                        </div>
-                        <div className="pt-2 border-t">
-                            <p className="mt-2"><span className="font-semibold">Source:</span> {currentSourceDetails.name} ({currentSourceDetails.type})</p>
+                            <p><span className="font-semibold">Source:</span> {currentSourceDetails.name} ({currentSourceDetails.type})</p>
                             <p className="text-xs text-muted-foreground">{currentSourceDetails.description}</p>
                             {currentSourceDetails.type === 'benchmark' && currentSourceDetails.supported_metrics && (
                                 <p className="text-xs text-muted-foreground mt-1">Benchmark typically supports: {currentSourceDetails.supported_metrics.join(', ')}</p>
                             )}
+                        </div>
+                        <div className="pt-2 border-t">
+                             <p className="mt-2"><span className="font-semibold">RAG System:</span> {currentRAGSystem.name}</p>
+                            <p className="text-xs text-muted-foreground">{currentRAGSystem.description}</p>
                         </div>
                     </CardContent>
                   </Card>
