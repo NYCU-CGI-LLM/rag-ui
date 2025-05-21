@@ -28,8 +28,7 @@ export default function Home() {
           <div className="rounded-lg border bg-card p-6">
             <h3 className="text-lg font-semibold mb-2">Library Management</h3>
             <p className="text-muted-foreground">
-              Create libraries and upload files which are automatically embedded
-              into a vector database for efficient retrieval.
+            Create libraries and upload files, and delete specific files when needed.
             </p>
           </div>
           <div className="rounded-lg border bg-card p-6">
