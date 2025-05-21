@@ -26,18 +26,18 @@ export default function Home() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8">
           <div className="rounded-lg border bg-card p-6">
+            <h3 className="text-lg font-semibold mb-2">Library Management</h3>
+            <p className="text-muted-foreground">
+              Create libraries and upload files which are automatically embedded
+              into a vector database for efficient retrieval.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-6">
             <h3 className="text-lg font-semibold mb-2">Chat Interface</h3>
             <p className="text-muted-foreground">
               Chat with AI powered by your document libraries. Two sidebars let
               you navigate between chat sessions and select your personal
               libraries.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="text-lg font-semibold mb-2">Library Management</h3>
-            <p className="text-muted-foreground">
-              Create libraries and upload files which are automatically embedded
-              into a vector database for efficient retrieval.
             </p>
           </div>
           <div className="rounded-lg border bg-card p-6">
