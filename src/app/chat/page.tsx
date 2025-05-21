@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Label } from "@/components/ui/label";
 
 // Library data with descriptions
 const libraries = [
@@ -43,6 +44,41 @@ const libraries = [
     id: "company-wiki", 
     name: "Company Wiki", 
     description: "Internal knowledge base covering company policies, procedures and best practices." 
+  },
+];
+
+// Config data (mock)
+const parsers = [
+  { id: "pypdf", name: "PyPDF" },
+  { id: "markdown_parser", name: "Markdown Parser" },
+];
+
+const retrievers = [
+  { id: "chroma_db", name: "ChromaDB" },
+  { id: "bm25", name: "BM25" },
+];
+
+const generators = [
+  {
+    id: "openai_llm",
+    name: "OpenAI LLM",
+    models: [
+      { id: "gpt-4o-mini", name: "gpt-4o mini" },
+      { id: "gpt-4o", name: "gpt-4o" },
+    ],
+    parameters: [
+      { id: "max_tokens", name: "Max Tokens", type: "number", min: 1, max: 2048, step: 1, defaultValue: 1024 },
+      { id: "temperature", name: "Temperature", type: "number", min: 0, max: 2, step: 0.1, defaultValue: 0.7 },
+      { id: "top_p", name: "Top P", type: "number", min: 0, max: 1, step: 0.01, defaultValue: 1 },
+    ],
+  },
+  {
+    id: "another_llm",
+    name: "Another LLM",
+    models: [{ id: "model_x", name: "Model X" }],
+    parameters: [
+      { id: "max_tokens", name: "Max Tokens", type: "number", min: 1, max: 2048, step: 1, defaultValue: 1024 },
+    ],
   },
 ];
 
@@ -97,9 +133,39 @@ export default function ChatPage() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // New config states
+  const [selectedParser, setSelectedParser] = useState<string | undefined>(parsers[0]?.id);
+  const [selectedRetriever, setSelectedRetriever] = useState<string | undefined>(retrievers[0]?.id);
+  const [selectedGenerator, setSelectedGenerator] = useState<string | undefined>(generators[0]?.id);
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(
+    generators.find(g => g.id === generators[0]?.id)?.models[0]?.id
+  );
+  const [modelParams, setModelParams] = useState<Record<string, any>>({});
+
+  // For config "Set" loading animation
+  const [isSetting, setIsSetting] = useState(false);
+
+  // Effect to initialize modelParams when generator changes
+  useEffect(() => {
+    const currentGenerator = generators.find(g => g.id === selectedGenerator);
+    if (currentGenerator) {
+      const initialParams: Record<string, any> = {};
+      currentGenerator.parameters.forEach(param => {
+        initialParams[param.id] = param.defaultValue;
+      });
+      setModelParams(initialParams);
+      // Also set the default model for the new generator
+      setSelectedModel(currentGenerator.models[0]?.id);
+    } else {
+      setModelParams({});
+      setSelectedModel(undefined);
+    }
+  }, [selectedGenerator]);
   
   // Get the full description of the selected library
   const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
+  const currentGeneratorDetails = generators.find(g => g.id === selectedGenerator);
 
   const handleSendMessage = async () => {
     if (inputValue.trim() === "" || isLoading) return;
@@ -116,12 +182,26 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
+      const apiPayload = {
+        query: inputValue,
+        result_column: "generated_texts", // This might need to be dynamic or removed if backend handles it
+        config: {
+          library_id: selectedLibrary,
+          parser: selectedParser,
+          retriever: selectedRetriever,
+          generator: selectedGenerator,
+          model: selectedModel,
+          parameters: modelParams,
+        }
+      };
+      console.log("Sending to API:", apiPayload); // For debugging
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: inputValue, result_column: "generated_texts" }), // Assuming result_column is fixed or can be made dynamic if needed
+        body: JSON.stringify(apiPayload),
       });
 
       if (!response.ok) {
@@ -154,6 +234,25 @@ export default function ChatPage() {
       setIsLoading(false);
     }
   };
+
+  const handleParamChange = (paramId: string, value: any) => {
+    setModelParams(prev => ({ ...prev, [paramId]: value }));
+  };
+
+  // Spinner animation for setting
+  function SettingLoadingSpinner() {
+    // Simple three-dot animation using CSS
+    return (
+      <div className="flex flex-col items-center justify-center">
+        <div className="flex space-x-1">
+          <span className="animate-bounce [animation-delay:0ms] text-2xl">.</span>
+          <span className="animate-bounce [animation-delay:200ms] text-2xl">.</span>
+          <span className="animate-bounce [animation-delay:400ms] text-2xl">.</span>
+        </div>
+        <div className="mt-2 text-base font-medium">Applying Settings...</div>
+      </div>
+    );
+  }
   
   return (
     <PageLayout>
@@ -185,7 +284,15 @@ export default function ChatPage() {
         </aside>
         
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col relative">
+          {/* Overlay for settings spinner */}
+          {isSetting && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/70 pointer-events-auto">
+              <div>
+                <SettingLoadingSpinner />
+              </div>
+            </div>
+          )}
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="space-y-2 max-w-4xl mx-auto">
               {messages.map((msg) => (
@@ -240,83 +347,177 @@ export default function ChatPage() {
           </div>
         </div>
         
-        {/* Right Sidebar - Libraries */}
-        <aside className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto">
-          <h2 className="font-semibold mb-4 p-2 border-b pb-4 text-lg font-heading">Selected Library</h2>
-          
-          {/* Library selection with popover */}
-          <Popover open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
-            <PopoverTrigger asChild>
-              <Card className="cursor-pointer hover:bg-accent/50 transition-colors">
-                <CardContent className="pt-4">
-                  <div className="flex justify-between items-center">
-                    <div className="font-medium">{selectedLibraryData?.name}</div>
-                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="m7 15 5 5 5-5"/>
-                        <path d="m7 9 5-5 5 5"/>
-                      </svg>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </PopoverTrigger>
-            
-            <PopoverContent className="w-[400px] p-0">
-              <div className="max-h-[60vh] overflow-y-auto">
-                {libraries.map((library) => (
-                  <div 
-                    key={library.id} 
-                    className={`p-4 cursor-pointer dialog-item ${
-                      library.id === selectedLibrary ? 'bg-accent text-accent-foreground' : ''
-                    }`}
-                    onClick={() => {
-                      setSelectedLibrary(library.id);
-                      setIsLibraryOpen(false);
-                    }}
-                  >
-                    <div className="text-base font-medium">{library.name}</div>
-                    {library.description && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {library.description}
-                      </p>
-                    )}
-                  </div>
-                ))}
+        {/* Right Sidebar - Config */}
+        <aside className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto space-y-6">
+          <div>
+            <h2 className="font-semibold mb-4 p-2 border-b pb-4 text-lg font-heading">Selected Library</h2>
+            <Popover open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
+              <PopoverTrigger asChild>
+                <Card className="cursor-pointer hover:bg-accent/50 transition-colors">
+                  <CardContent className="pt-4">
+                    <div className="flex justify-between items-center">
+                      <div className="font-medium">{selectedLibraryData?.name}</div>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m7 15 5 5 5-5"/>
+                          <path d="m7 9 5-5 5 5"/>
+                        </svg>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0">
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {libraries.map((library) => (
+                    <div 
+                      key={library.id} 
+                      className={`p-4 cursor-pointer dialog-item ${
+                        library.id === selectedLibrary ? 'bg-accent text-accent-foreground' : ''
+                      }`}
+                      onClick={() => {
+                        setSelectedLibrary(library.id);
+                        setIsLibraryOpen(false);
+                      }}
+                    >
+                      <div className="text-base font-medium">{library.name}</div>
+                      {library.description && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {library.description}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div>
+            <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Config Setting</h3>
+            <div className="space-y-4 pt-2">
+              <div>
+                <Label className="text-sm text-muted-foreground">Parser</Label>
+                <Select value={selectedParser} onValueChange={setSelectedParser}>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue placeholder="Select a parser" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parsers.map(parser => (
+                      <SelectItem key={parser.id} value={parser.id}>{parser.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </PopoverContent>
-          </Popover>
-          
-          <h3 className="font-semibold mt-6 mb-2">Search Settings</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm text-muted-foreground">Number of results</label>
-              <Select defaultValue="10">
-                <SelectTrigger className="w-full mt-1">
-                  <SelectValue placeholder="Select number of results" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="3">3</SelectItem>
-                  <SelectItem value="5">5</SelectItem>
-                  <SelectItem value="10">10</SelectItem>
-                  <SelectItem value="20">20</SelectItem>
-                </SelectContent>
-              </Select>
+
+              <div>
+                <Label className="text-sm text-muted-foreground">Retriever</Label>
+                <Select value={selectedRetriever} onValueChange={setSelectedRetriever}>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue placeholder="Select a retriever" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {retrievers.map(retriever => (
+                      <SelectItem key={retriever.id} value={retriever.id}>{retriever.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm text-muted-foreground">Generator</Label>
+                <Select value={selectedGenerator} onValueChange={setSelectedGenerator}>
+                  <SelectTrigger className="w-full mt-1">
+                    <SelectValue placeholder="Select a generator" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {generators.map(gen => (
+                      <SelectItem key={gen.id} value={gen.id}>{gen.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {currentGeneratorDetails && (
+                <>
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Model</Label>
+                    <Select value={selectedModel} onValueChange={setSelectedModel}>
+                      <SelectTrigger className="w-full mt-1">
+                        <SelectValue placeholder="Select a model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {currentGeneratorDetails.models.map(model => (
+                          <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {currentGeneratorDetails.parameters.map(param => (
+                    <div key={param.id}>
+                      <Label htmlFor={param.id} className="text-sm text-muted-foreground">{param.name}</Label>
+                      {param.type === 'number' && (param.id === 'temperature' || param.id === 'top_p') ? (
+                        <>
+                          <input
+                            id={param.id}
+                            type="range"
+                            min={param.min}
+                            max={param.max}
+                            step={param.step}
+                            value={modelParams[param.id] ?? param.defaultValue}
+                            onChange={(e) => handleParamChange(param.id, parseFloat(e.target.value))}
+                            className="w-full mt-1"
+                          />
+                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                            <span>{param.min}</span>
+                            <span>{modelParams[param.id]}</span>
+                            <span>{param.max}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Input
+                            id={param.id}
+                            type={param.type}
+                            min={param.min}
+                            max={param.max}
+                            step={param.step}
+                            value={modelParams[param.id] ?? param.defaultValue}
+                            onChange={(e) => handleParamChange(param.id, param.type === 'number' ? parseFloat(e.target.value) : e.target.value)}
+                            className="w-full mt-1"
+                          />
+                          {param.type === 'number' && (
+                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                              <span>Min: {param.min}</span>
+                              <span>Max: {param.max}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
-            
-            <div>
-              <label className="text-sm text-muted-foreground">Similarity threshold</label>
-              <Input 
-                type="range" 
-                min="0" 
-                max="100" 
-                defaultValue="75" 
-                className="w-full mt-1"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Low</span>
-                <span>High</span>
-              </div>
+            {/* Set button at the bottom of the config area */}
+            <div className="pt-8 flex justify-end">
+              <Button
+                onClick={() => {
+                  setIsSetting(true);
+                  setTimeout(() => setIsSetting(false), 1500);
+                }}
+                disabled={isSetting}
+                className="w-24"
+              >{isSetting ? (
+                <span>
+                  <svg className="inline animate-spin mr-1 h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Setting...
+                </span>
+              ) : "Set"}
+              </Button>
             </div>
           </div>
         </aside>
