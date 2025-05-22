@@ -52,6 +52,9 @@ export default function LibraryPage() {
   const [newLibraryDescription, setNewLibraryDescription] = useState("");
   const [selectedDocuments, setSelectedDocuments] = useState<number[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
+  const [isDeleteLibraryDialogOpen, setIsDeleteLibraryDialogOpen] = useState(false);
 
   // Initialize with demo data
   useEffect(() => {
@@ -134,6 +137,24 @@ export default function LibraryPage() {
     setSelectedDocuments([]);
   };
 
+  const handleDuplicateLibrary = () => {
+    if (currentLibrary) {
+      const duplicateLibrary: Library = {
+        id: String(libraries.length + 1),
+        name: `${currentLibrary.name} copy`,
+        description: currentLibrary.description,
+        fileCount: currentLibrary.fileCount,
+        lastUpdated: new Date().toISOString().split('T')[0]
+      };
+      
+      setLibraries((prev) => [...prev, duplicateLibrary]);
+      
+      // Navigate back to the Document Libraries page
+      setCurrentLibrary(null);
+      setSelectedDocuments([]);
+    }
+  };
+
   const toggleDocumentSelection = (docId: number) => {
     setSelectedDocuments((prevSelected) =>
       prevSelected.includes(docId)
@@ -164,18 +185,105 @@ export default function LibraryPage() {
     setIsDeleteDialogOpen(false);
   };
 
+  const handleRenameLibrary = () => {
+    if (currentLibrary && editedName.trim() !== "") {
+      const updatedLibrary = { ...currentLibrary, name: editedName.trim() };
+      setCurrentLibrary(updatedLibrary);
+      setLibraries(prev => prev.map(lib => 
+        lib.id === updatedLibrary.id ? updatedLibrary : lib
+      ));
+      setIsEditingName(false);
+    }
+  };
+
+  const startEditingName = () => {
+    if (currentLibrary) {
+      setEditedName(currentLibrary.name);
+      setIsEditingName(true);
+    }
+  };
+
+  const handleDeleteLibrary = () => {
+    if (currentLibrary) {
+      setLibraries(prev => prev.filter(lib => lib.id !== currentLibrary.id));
+      setCurrentLibrary(null);
+      setSelectedDocuments([]);
+      setIsDeleteLibraryDialogOpen(false);
+    }
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
         {currentLibrary ? (
           // Document view when a library is selected
           <>
-            <div className="flex justify-between items-center">
-              <div>
-                <Button variant="outline" onClick={handleBackToLibraries}>
-                  ← Back to Libraries
-                </Button>
-                <h1 className="text-2xl font-bold mt-2">{currentLibrary.name}</h1>
+            <div className="flex justify-between items-start">
+              <div className="w-full">
+                <div className="flex justify-between w-full">
+                  <Button variant="outline" onClick={handleBackToLibraries}>
+                    ← Back to Libraries
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => setIsDeleteLibraryDialogOpen(true)}
+                    className="flex items-center"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Library
+                  </Button>
+                </div>
+                <div className="mt-2 flex items-center">
+                  {isEditingName ? (
+                    <div className="flex items-center">
+                      <Input 
+                        value={editedName}
+                        onChange={(e) => setEditedName(e.target.value)}
+                        className="text-2xl font-bold h-auto py-1 mr-2"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleRenameLibrary();
+                          } else if (e.key === 'Escape') {
+                            setIsEditingName(false);
+                          }
+                        }}
+                      />
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleRenameLibrary}
+                        className="h-8 px-2"
+                      >
+                        Save
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setIsEditingName(false)}
+                        className="h-8 px-2"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <h1 className="text-2xl font-bold">{currentLibrary.name}</h1>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={startEditingName}
+                        className="ml-2 h-8 w-8 p-0"
+                        aria-label="Edit library name"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                          <path d="m15 5 4 4"/>
+                        </svg>
+                      </Button>
+                    </>
+                  )}
+                </div>
                 <p className="text-muted-foreground">{currentLibrary.description}</p>
               </div>
             </div>
@@ -183,6 +291,9 @@ export default function LibraryPage() {
             <div className="mt-6">
               <div className="flex mb-4 items-center">
                 <Button variant="outline" className="mr-2">Upload Files</Button>
+                <Button variant="outline" className="mr-2" onClick={handleDuplicateLibrary}>
+                  Duplicate Library
+                </Button>
                 {selectedDocuments.length > 0 && (
                   <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                     <DialogTrigger asChild>
@@ -214,10 +325,10 @@ export default function LibraryPage() {
               </div>
               
               {documents.length > 0 ? (
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-muted">
-                      <tr>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-muted">
+                    <tr>
                         <th className="py-2 px-4 text-left w-10">
                           <Checkbox
                             checked={documents.length > 0 && selectedDocuments.length === documents.length}
@@ -225,14 +336,14 @@ export default function LibraryPage() {
                             aria-label="Select all documents"
                           />
                         </th>
-                        <th className="text-left py-2 px-4">File Name</th>
-                        <th className="text-left py-2 px-4">Size</th>
-                        <th className="text-left py-2 px-4">Upload Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documents.map((file) => (
-                        <tr key={file.id} className="border-t">
+                      <th className="text-left py-2 px-4">File Name</th>
+                      <th className="text-left py-2 px-4">Size</th>
+                      <th className="text-left py-2 px-4">Upload Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {documents.map((file) => (
+                      <tr key={file.id} className="border-t">
                           <td className="py-2 px-4">
                             <Checkbox
                               checked={selectedDocuments.includes(file.id)}
@@ -240,14 +351,14 @@ export default function LibraryPage() {
                               aria-label={`Select document ${file.name}`}
                             />
                           </td>
-                          <td className="py-2 px-4">{file.name}</td>
-                          <td className="py-2 px-4">{file.size}</td>
-                          <td className="py-2 px-4">{file.uploadDate}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        <td className="py-2 px-4">{file.name}</td>
+                        <td className="py-2 px-4">{file.size}</td>
+                        <td className="py-2 px-4">{file.uploadDate}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               ) : (
                 <Card className="mt-4 text-center">
                   <CardContent className="p-6">
@@ -273,7 +384,10 @@ export default function LibraryPage() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {libraries.map((library) => (
+              {libraries
+                .slice()
+                .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
+                .map((library) => (
                 <Card 
                   key={library.id} 
                   className="hover:border-primary cursor-pointer"
@@ -340,6 +454,26 @@ export default function LibraryPage() {
               </Button>
               <Button onClick={handleSaveNewLibrary}>
                 Create Library
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Library Confirmation Dialog */}
+        <Dialog open={isDeleteLibraryDialogOpen} onOpenChange={setIsDeleteLibraryDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Library</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{currentLibrary?.name}"? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex justify-between mt-6 gap-4">
+              <Button variant="outline" onClick={() => setIsDeleteLibraryDialogOpen(false)} className="flex-1">
+                Keep
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteLibrary} className="flex-1">
+                Delete
               </Button>
             </DialogFooter>
           </DialogContent>
