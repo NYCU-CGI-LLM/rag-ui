@@ -54,6 +54,7 @@ export default function LibraryPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [isDeleteLibraryDialogOpen, setIsDeleteLibraryDialogOpen] = useState(false);
 
   // Initialize with demo data
   useEffect(() => {
@@ -202,17 +203,36 @@ export default function LibraryPage() {
     }
   };
 
+  const handleDeleteLibrary = () => {
+    if (currentLibrary) {
+      setLibraries(prev => prev.filter(lib => lib.id !== currentLibrary.id));
+      setCurrentLibrary(null);
+      setSelectedDocuments([]);
+      setIsDeleteLibraryDialogOpen(false);
+    }
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
         {currentLibrary ? (
           // Document view when a library is selected
           <>
-            <div className="flex justify-between items-center">
-              <div>
-                <Button variant="outline" onClick={handleBackToLibraries}>
-                  ← Back to Libraries
-                </Button>
+            <div className="flex justify-between items-start">
+              <div className="w-full">
+                <div className="flex justify-between w-full">
+                  <Button variant="outline" onClick={handleBackToLibraries}>
+                    ← Back to Libraries
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => setIsDeleteLibraryDialogOpen(true)}
+                    className="flex items-center"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Library
+                  </Button>
+                </div>
                 <div className="mt-2 flex items-center">
                   {isEditingName ? (
                     <div className="flex items-center">
@@ -434,6 +454,26 @@ export default function LibraryPage() {
               </Button>
               <Button onClick={handleSaveNewLibrary}>
                 Create Library
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Library Confirmation Dialog */}
+        <Dialog open={isDeleteLibraryDialogOpen} onOpenChange={setIsDeleteLibraryDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Library</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{currentLibrary?.name}"? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex justify-between mt-6 gap-4">
+              <Button variant="outline" onClick={() => setIsDeleteLibraryDialogOpen(false)} className="flex-1">
+                Keep
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteLibrary} className="flex-1">
+                Delete
               </Button>
             </DialogFooter>
           </DialogContent>
