@@ -16,7 +16,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 // Library data with descriptions
 const libraries = [
@@ -44,6 +53,58 @@ const libraries = [
     id: "company-wiki", 
     name: "Company Wiki", 
     description: "Internal knowledge base covering company policies, procedures and best practices." 
+  },
+];
+
+// Mock saved chat sessions
+const savedChatSessions = [
+  { 
+    id: "session-1", 
+    name: "General Chat",
+    timestamp: "Today, 10:30 AM",
+    config: {
+      library: "tech-docs",
+      parser: "pypdf",
+      retriever: "chroma_db",
+      generator: "openai_llm",
+      model: "gpt-4o",
+    }
+  },
+  { 
+    id: "session-2", 
+    name: "Project Research",
+    timestamp: "Yesterday, 3:45 PM",
+    config: {
+      library: "research-papers",
+      parser: "markdown_parser",
+      retriever: "bm25",
+      generator: "another_llm",
+      model: "model_x",
+    }
+  },
+  { 
+    id: "session-3", 
+    name: "Meeting Notes",
+    timestamp: "Aug 15, 2:15 PM",
+    config: {
+      library: "company-wiki",
+      parser: "markdown_parser",
+      retriever: "chroma_db",
+      generator: "openai_llm",
+      model: "gpt-4o-mini",
+    }
+  },
+  { 
+    id: "session-4", 
+    name: "Technical Docs",
+    timestamp: "Aug 14, 11:20 AM",
+    config: {
+      library: "product-manuals",
+      parser: "pypdf",
+      retriever: "bm25",
+      generator: "openai_llm",
+      model: "gpt-4o",
+    }
   },
 ];
 
@@ -133,6 +194,17 @@ export default function ChatPage() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Track the currently selected chat session
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("session-1");
+
+  // New chat session dialog states
+  const [isNewChatPopoverOpen, setIsNewChatPopoverOpen] = useState(false);
+  const [isNewSessionDialogOpen, setIsNewSessionDialogOpen] = useState(false);
+  const [isExistingSessionDialogOpen, setIsExistingSessionDialogOpen] = useState(false);
+  const [tempLibrary, setTempLibrary] = useState(libraries[0].id);
+  const [tempParser, setTempParser] = useState(parsers[0]?.id);
+  const [tempRetriever, setTempRetriever] = useState(retrievers[0]?.id);
 
   // New config states
   const [selectedParser, setSelectedParser] = useState<string | undefined>(parsers[0]?.id);
@@ -162,6 +234,29 @@ export default function ChatPage() {
       setSelectedModel(undefined);
     }
   }, [selectedGenerator]);
+  
+  // Load initial session data on first render
+  useEffect(() => {
+    if (selectedSessionId) {
+      const session = savedChatSessions.find(s => s.id === selectedSessionId);
+      if (session) {
+        // Set configuration based on the selected session
+        setSelectedLibrary(session.config.library);
+        setSelectedParser(session.config.parser);
+        setSelectedRetriever(session.config.retriever);
+        setSelectedGenerator(session.config.generator);
+        setSelectedModel(session.config.model);
+        
+        // Set initial message
+        setMessages([{
+          id: "initial-ai-message-existing",
+          isUser: false,
+          content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      }
+    }
+  }, []);
   
   // Get the full description of the selected library
   const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
@@ -239,6 +334,58 @@ export default function ChatPage() {
     setModelParams(prev => ({ ...prev, [paramId]: value }));
   };
 
+  // Create a new chat session with the selected configuration
+  const createNewChatSession = () => {
+    // Update main configuration with temporary selections
+    setSelectedLibrary(tempLibrary);
+    setSelectedParser(tempParser);
+    setSelectedRetriever(tempRetriever);
+    
+    // Reset chat messages to initial greeting
+    setMessages([{
+      id: "initial-ai-message-new",
+      isUser: false,
+      content: "Hello! How can I help you today?",
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }]);
+    
+    // Clear selected session (no session is selected when creating a new custom one)
+    setSelectedSessionId("");
+    
+    // Close dialogs
+    setIsNewSessionDialogOpen(false);
+    setIsNewChatPopoverOpen(false);
+  };
+
+  // Create a chat session from an existing one
+  const loadExistingSession = (sessionId: string) => {
+    const session = savedChatSessions.find(s => s.id === sessionId);
+    
+    if (session) {
+      // Set configuration based on the selected session
+      setSelectedLibrary(session.config.library);
+      setSelectedParser(session.config.parser);
+      setSelectedRetriever(session.config.retriever);
+      setSelectedGenerator(session.config.generator);
+      setSelectedModel(session.config.model);
+      
+      // Reset chat messages to initial greeting
+      setMessages([{
+        id: "initial-ai-message-existing",
+        isUser: false,
+        content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      
+      // Update the selected session id
+      setSelectedSessionId(sessionId);
+      
+      // Close dialog
+      setIsExistingSessionDialogOpen(false);
+      setIsNewChatPopoverOpen(false);
+    }
+  };
+
   // Spinner animation for setting
   function SettingLoadingSpinner() {
     // Simple three-dot animation using CSS
@@ -262,22 +409,67 @@ export default function ChatPage() {
           {/* Header with New Chat button */}
           <div className="flex justify-between items-center p-4 border-b font-heading">
             <h2 className="font-semibold text-lg">Chat Sessions</h2>
-            <Button variant="ghost" size="icon" className="h-8 w-8" title="New Chat">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              <span className="sr-only">New Chat</span>
-            </Button>
+            <Popover open={isNewChatPopoverOpen} onOpenChange={setIsNewChatPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="New Chat">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  <span className="sr-only">New Chat</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0">
+                <div className="py-2">
+                  <button 
+                    className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => {
+                      setIsNewSessionDialogOpen(true);
+                      setTempLibrary(selectedLibrary);
+                      setTempParser(selectedParser || "");
+                      setTempRetriever(selectedRetriever || "");
+                    }}
+                  >
+                    <div className="flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                        <path d="M12 5v14M5 12h14"/>
+                      </svg>
+                      Create new custom session
+                    </div>
+                  </button>
+                  <button 
+                    className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => {
+                      setIsExistingSessionDialogOpen(true);
+                      setIsNewChatPopoverOpen(false);
+                    }}
+                  >
+                    <div className="flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                        <path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/>
+                        <path d="M8 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2"/>
+                        <path d="M8 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
+                        <path d="M15 5h1a2 2 0 0 1 2 2v1"/>
+                        <path d="M22 12h-4"/>
+                        <path d="M18 10l-2 2 2 2"/>
+                      </svg>
+                      From existing session
+                    </div>
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           
           {/* Chat list */}
           <div className="flex flex-col">
-            {['General Chat', 'Project Research', 'Meeting Notes', 'Technical Docs'].map((session, index) => (
+            {savedChatSessions.map((session) => (
               <div 
-                key={index} 
-                className={`p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${index === 0 ? 'bg-accent text-accent-foreground' : ''}`}
+                key={session.id} 
+                className={`p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
+                onClick={() => loadExistingSession(session.id)}
               >
-                {session}
+                <div className="font-medium">{session.name}</div>
+                <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
               </div>
             ))}
           </div>
@@ -349,81 +541,30 @@ export default function ChatPage() {
         
         {/* Right Sidebar - Config */}
         <aside className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto space-y-6">
+          {/* Current Session Info */}
           <div>
-            <h2 className="font-semibold mb-4 p-2 border-b pb-4 text-lg font-heading">Selected Library</h2>
-            <Popover open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
-              <PopoverTrigger asChild>
-                <Card className="cursor-pointer hover:bg-accent/50 transition-colors">
-                  <CardContent className="pt-4">
-                    <div className="flex justify-between items-center">
-                      <div className="font-medium">{selectedLibraryData?.name}</div>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="m7 15 5 5 5-5"/>
-                          <path d="m7 9 5-5 5 5"/>
-                        </svg>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </PopoverTrigger>
-              <PopoverContent className="w-[400px] p-0">
-                <div className="max-h-[60vh] overflow-y-auto">
-                  {libraries.map((library) => (
-                    <div 
-                      key={library.id} 
-                      className={`p-4 cursor-pointer dialog-item ${
-                        library.id === selectedLibrary ? 'bg-accent text-accent-foreground' : ''
-                      }`}
-                      onClick={() => {
-                        setSelectedLibrary(library.id);
-                        setIsLibraryOpen(false);
-                      }}
-                    >
-                      <div className="text-base font-medium">{library.name}</div>
-                      {library.description && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {library.description}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+            <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Current Session</h3>
+            <div className="p-3 bg-muted rounded-md">
+              <div className="space-y-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">Library</div>
+                  <div className="font-medium">{selectedLibraryData?.name || "None"}</div>
                 </div>
-              </PopoverContent>
-            </Popover>
+                <div>
+                  <div className="text-xs text-muted-foreground">Parser</div>
+                  <div className="font-medium">{parsers.find(p => p.id === selectedParser)?.name || "None"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Retriever</div>
+                  <div className="font-medium">{retrievers.find(r => r.id === selectedRetriever)?.name || "None"}</div>
+                </div>
+              </div>
+            </div>
           </div>
-
+          
           <div>
-            <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Config Setting</h3>
+            <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Model Settings</h3>
             <div className="space-y-4 pt-2">
-              <div>
-                <Label className="text-sm text-muted-foreground">Parser</Label>
-                <Select value={selectedParser} onValueChange={setSelectedParser}>
-                  <SelectTrigger className="w-full mt-1">
-                    <SelectValue placeholder="Select a parser" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {parsers.map(parser => (
-                      <SelectItem key={parser.id} value={parser.id}>{parser.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label className="text-sm text-muted-foreground">Retriever</Label>
-                <Select value={selectedRetriever} onValueChange={setSelectedRetriever}>
-                  <SelectTrigger className="w-full mt-1">
-                    <SelectValue placeholder="Select a retriever" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {retrievers.map(retriever => (
-                      <SelectItem key={retriever.id} value={retriever.id}>{retriever.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div>
                 <Label className="text-sm text-muted-foreground">Generator</Label>
                 <Select value={selectedGenerator} onValueChange={setSelectedGenerator}>
@@ -516,11 +657,146 @@ export default function ChatPage() {
                   </svg>
                   Setting...
                 </span>
-              ) : "Set"}
+              ) : "Apply"}
               </Button>
             </div>
           </div>
         </aside>
+        
+        {/* Existing Session Dialog */}
+        <Dialog open={isExistingSessionDialogOpen} onOpenChange={setIsExistingSessionDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Load Existing Chat Session</DialogTitle>
+              <DialogDescription>
+                Select a previously configured chat session to continue.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="max-h-[60vh] overflow-y-auto">
+                {savedChatSessions.map((session) => (
+                  <div 
+                    key={session.id} 
+                    className="p-4 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-md mb-2"
+                    onClick={() => loadExistingSession(session.id)}
+                  >
+                    <div className="flex justify-between">
+                      <div className="font-medium">{session.name}</div>
+                      <div className="text-xs text-muted-foreground">{session.timestamp}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Badge variant="outline" className="text-xs">
+                        Library: {libraries.find(l => l.id === session.config.library)?.name || session.config.library}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Parser: {parsers.find(p => p.id === session.config.parser)?.name || session.config.parser}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Retriever: {retrievers.find(r => r.id === session.config.retriever)?.name || session.config.retriever}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Generator: {generators.find(g => g.id === session.config.generator)?.name || session.config.generator}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Model: {session.config.model}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsExistingSessionDialogOpen(false)}>
+                Cancel
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        
+        {/* New Chat Session Dialog */}
+        <Dialog open={isNewSessionDialogOpen} onOpenChange={setIsNewSessionDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Create New Chat Session</DialogTitle>
+              <DialogDescription>
+                Configure the settings for your new chat session.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="new-library" className="text-right">
+                  Library
+                </Label>
+                <div className="col-span-3">
+                  <Select value={tempLibrary} onValueChange={setTempLibrary}>
+                    <SelectTrigger id="new-library">
+                      <SelectValue placeholder="Select a library" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {libraries.map(lib => (
+                        <SelectItem key={lib.id} value={lib.id}>
+                          {lib.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="new-parser" className="text-right">
+                  Parser
+                </Label>
+                <div className="col-span-3">
+                  <Select value={tempParser} onValueChange={setTempParser}>
+                    <SelectTrigger id="new-parser">
+                      <SelectValue placeholder="Select a parser" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {parsers.map(parser => (
+                        <SelectItem key={parser.id} value={parser.id}>
+                          {parser.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="new-retriever" className="text-right">
+                  Retriever
+                </Label>
+                <div className="col-span-3">
+                  <Select value={tempRetriever} onValueChange={setTempRetriever}>
+                    <SelectTrigger id="new-retriever">
+                      <SelectValue placeholder="Select a retriever" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {retrievers.map(retriever => (
+                        <SelectItem key={retriever.id} value={retriever.id}>
+                          {retriever.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsNewSessionDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={createNewChatSession}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                Create Chat
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PageLayout>
   );

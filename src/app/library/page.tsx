@@ -214,10 +214,10 @@ export default function LibraryPage() {
               </div>
               
               {documents.length > 0 ? (
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-muted">
-                      <tr>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-muted">
+                    <tr>
                         <th className="py-2 px-4 text-left w-10">
                           <Checkbox
                             checked={documents.length > 0 && selectedDocuments.length === documents.length}
@@ -225,14 +225,14 @@ export default function LibraryPage() {
                             aria-label="Select all documents"
                           />
                         </th>
-                        <th className="text-left py-2 px-4">File Name</th>
-                        <th className="text-left py-2 px-4">Size</th>
-                        <th className="text-left py-2 px-4">Upload Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documents.map((file) => (
-                        <tr key={file.id} className="border-t">
+                      <th className="text-left py-2 px-4">File Name</th>
+                      <th className="text-left py-2 px-4">Size</th>
+                      <th className="text-left py-2 px-4">Upload Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {documents.map((file) => (
+                      <tr key={file.id} className="border-t">
                           <td className="py-2 px-4">
                             <Checkbox
                               checked={selectedDocuments.includes(file.id)}
@@ -240,14 +240,14 @@ export default function LibraryPage() {
                               aria-label={`Select document ${file.name}`}
                             />
                           </td>
-                          <td className="py-2 px-4">{file.name}</td>
-                          <td className="py-2 px-4">{file.size}</td>
-                          <td className="py-2 px-4">{file.uploadDate}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        <td className="py-2 px-4">{file.name}</td>
+                        <td className="py-2 px-4">{file.size}</td>
+                        <td className="py-2 px-4">{file.uploadDate}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               ) : (
                 <Card className="mt-4 text-center">
                   <CardContent className="p-6">
