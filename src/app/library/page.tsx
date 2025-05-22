@@ -52,6 +52,8 @@ export default function LibraryPage() {
   const [newLibraryDescription, setNewLibraryDescription] = useState("");
   const [selectedDocuments, setSelectedDocuments] = useState<number[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
 
   // Initialize with demo data
   useEffect(() => {
@@ -182,6 +184,24 @@ export default function LibraryPage() {
     setIsDeleteDialogOpen(false);
   };
 
+  const handleRenameLibrary = () => {
+    if (currentLibrary && editedName.trim() !== "") {
+      const updatedLibrary = { ...currentLibrary, name: editedName.trim() };
+      setCurrentLibrary(updatedLibrary);
+      setLibraries(prev => prev.map(lib => 
+        lib.id === updatedLibrary.id ? updatedLibrary : lib
+      ));
+      setIsEditingName(false);
+    }
+  };
+
+  const startEditingName = () => {
+    if (currentLibrary) {
+      setEditedName(currentLibrary.name);
+      setIsEditingName(true);
+    }
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
@@ -193,7 +213,57 @@ export default function LibraryPage() {
                 <Button variant="outline" onClick={handleBackToLibraries}>
                   ← Back to Libraries
                 </Button>
-                <h1 className="text-2xl font-bold mt-2">{currentLibrary.name}</h1>
+                <div className="mt-2 flex items-center">
+                  {isEditingName ? (
+                    <div className="flex items-center">
+                      <Input 
+                        value={editedName}
+                        onChange={(e) => setEditedName(e.target.value)}
+                        className="text-2xl font-bold h-auto py-1 mr-2"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleRenameLibrary();
+                          } else if (e.key === 'Escape') {
+                            setIsEditingName(false);
+                          }
+                        }}
+                      />
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleRenameLibrary}
+                        className="h-8 px-2"
+                      >
+                        Save
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setIsEditingName(false)}
+                        className="h-8 px-2"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <h1 className="text-2xl font-bold">{currentLibrary.name}</h1>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={startEditingName}
+                        className="ml-2 h-8 w-8 p-0"
+                        aria-label="Edit library name"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                          <path d="m15 5 4 4"/>
+                        </svg>
+                      </Button>
+                    </>
+                  )}
+                </div>
                 <p className="text-muted-foreground">{currentLibrary.description}</p>
               </div>
             </div>
