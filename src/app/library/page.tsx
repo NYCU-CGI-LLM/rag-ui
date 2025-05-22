@@ -134,6 +134,24 @@ export default function LibraryPage() {
     setSelectedDocuments([]);
   };
 
+  const handleDuplicateLibrary = () => {
+    if (currentLibrary) {
+      const duplicateLibrary: Library = {
+        id: String(libraries.length + 1),
+        name: `${currentLibrary.name} copy`,
+        description: currentLibrary.description,
+        fileCount: currentLibrary.fileCount,
+        lastUpdated: new Date().toISOString().split('T')[0]
+      };
+      
+      setLibraries((prev) => [...prev, duplicateLibrary]);
+      
+      // Navigate back to the Document Libraries page
+      setCurrentLibrary(null);
+      setSelectedDocuments([]);
+    }
+  };
+
   const toggleDocumentSelection = (docId: number) => {
     setSelectedDocuments((prevSelected) =>
       prevSelected.includes(docId)
@@ -183,6 +201,9 @@ export default function LibraryPage() {
             <div className="mt-6">
               <div className="flex mb-4 items-center">
                 <Button variant="outline" className="mr-2">Upload Files</Button>
+                <Button variant="outline" className="mr-2" onClick={handleDuplicateLibrary}>
+                  Duplicate Library
+                </Button>
                 {selectedDocuments.length > 0 && (
                   <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                     <DialogTrigger asChild>
@@ -273,7 +294,10 @@ export default function LibraryPage() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {libraries.map((library) => (
+              {libraries
+                .slice()
+                .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
+                .map((library) => (
                 <Card 
                   key={library.id} 
                   className="hover:border-primary cursor-pointer"
