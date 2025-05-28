@@ -322,8 +322,17 @@ const availableRAGConfigs: RAGConfig[] = [
   },
 ];
 
-// Mock saved chat sessions using RAG configs
-const savedChatSessions = [
+// Chat session interface
+interface ChatSession {
+  id: string;
+  name: string;
+  timestamp: string;
+  library: string;
+  ragConfigId: string;
+}
+
+// Mock saved chat sessions using RAG configs - now as initial data
+const initialChatSessions: ChatSession[] = [
   { 
     id: "session-1", 
     name: "General Chat",
@@ -406,6 +415,9 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
+  // Chat sessions state management
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(initialChatSessions);
+  
   // Track the currently selected chat session and RAG config
   const [selectedSessionId, setSelectedSessionId] = useState<string>("session-1");
   const [selectedRAGConfigId, setSelectedRAGConfigId] = useState<string>(availableRAGConfigs[0]?.id || "");
@@ -422,6 +434,11 @@ export default function ChatPage() {
   const [isExistingSessionDialogOpen, setIsExistingSessionDialogOpen] = useState(false);
   const [tempLibrary, setTempLibrary] = useState(libraries[0].id);
   const [tempRAGConfigId, setTempRAGConfigId] = useState(availableRAGConfigs[0]?.id || "");
+  const [tempSessionName, setTempSessionName] = useState("");
+
+  // Delete confirmation dialog state
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   // Initialize generator params when RAG config changes
   useEffect(() => {
@@ -434,7 +451,7 @@ export default function ChatPage() {
   // Load initial session data on first render
   useEffect(() => {
     if (selectedSessionId) {
-      const session = savedChatSessions.find(s => s.id === selectedSessionId);
+      const session = chatSessions.find(s => s.id === selectedSessionId);
       if (session) {
         // Set configuration based on the selected session
         setSelectedLibrary(session.library);
@@ -538,9 +555,32 @@ export default function ChatPage() {
 
   // Create a new chat session with the selected configuration
   const createNewChatSession = () => {
+    // Generate new session ID and timestamp
+    const newSessionId = `session-${Date.now()}`;
+    const timestamp = new Date().toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    // Create new session object
+    const newSession: ChatSession = {
+      id: newSessionId,
+      name: tempSessionName.trim() || "New Chat Session",
+      timestamp: timestamp,
+      library: tempLibrary,
+      ragConfigId: tempRAGConfigId,
+    };
+
+    // Add to sessions list
+    setChatSessions(prev => [newSession, ...prev]);
+
     // Update main configuration with temporary selections
     setSelectedLibrary(tempLibrary);
     setSelectedRAGConfigId(tempRAGConfigId);
+    setSelectedSessionId(newSessionId);
     
     // Reset chat messages to initial greeting
     setMessages([{
@@ -550,17 +590,52 @@ export default function ChatPage() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }]);
     
-    // Clear selected session (no session is selected when creating a new custom one)
-    setSelectedSessionId("");
+    // Reset temporary form values
+    setTempSessionName("");
     
     // Close dialogs
     setIsNewSessionDialogOpen(false);
     setIsNewChatPopoverOpen(false);
   };
 
+  // Delete a chat session
+  const deleteSession = (sessionId: string) => {
+    setChatSessions(prev => prev.filter(session => session.id !== sessionId));
+    
+    // If we're deleting the currently selected session, switch to the first available session
+    if (selectedSessionId === sessionId) {
+      const remainingSessions = chatSessions.filter(session => session.id !== sessionId);
+      if (remainingSessions.length > 0) {
+        loadExistingSession(remainingSessions[0].id);
+      } else {
+        // No sessions left, create a default state
+        setSelectedSessionId("");
+        setSelectedLibrary(libraries[0].id);
+        setSelectedRAGConfigId(availableRAGConfigs[0]?.id || "");
+        setMessages([{
+          id: "initial-ai-message-empty",
+          isUser: false,
+          content: "Hello! How can I help you today?",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      }
+    }
+    
+    // Close delete dialog
+    setIsDeleteDialogOpen(false);
+    setDeleteSessionId(null);
+  };
+
+  // Handle delete session confirmation
+  const handleDeleteSession = (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent triggering the session selection
+    setDeleteSessionId(sessionId);
+    setIsDeleteDialogOpen(true);
+  };
+
   // Create a chat session from an existing one
   const loadExistingSession = (sessionId: string) => {
-    const session = savedChatSessions.find(s => s.id === sessionId);
+    const session = chatSessions.find(s => s.id === sessionId);
     
     if (session) {
       // Set configuration based on the selected session
@@ -577,6 +652,52 @@ export default function ChatPage() {
       
       // Update the selected session id
       setSelectedSessionId(sessionId);
+      
+      // Close dialog
+      setIsExistingSessionDialogOpen(false);
+      setIsNewChatPopoverOpen(false);
+    }
+  };
+
+  // Create a copy from an existing session
+  const createCopyFromExistingSession = (sessionId: string) => {
+    const session = chatSessions.find(s => s.id === sessionId);
+    
+    if (session) {
+      // Generate new session ID and timestamp
+      const newSessionId = `session-${Date.now()}`;
+      const timestamp = new Date().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+
+      // Create new session object with "copy" suffix
+      const newSession: ChatSession = {
+        id: newSessionId,
+        name: `${session.name} copy`,
+        timestamp: timestamp,
+        library: session.library,
+        ragConfigId: session.ragConfigId,
+      };
+
+      // Add to sessions list
+      setChatSessions(prev => [newSession, ...prev]);
+
+      // Set configuration based on the copied session
+      setSelectedLibrary(session.library);
+      setSelectedRAGConfigId(session.ragConfigId);
+      setSelectedSessionId(newSessionId);
+      
+      // Reset chat messages to initial greeting
+      setMessages([{
+        id: "initial-ai-message-copy",
+        isUser: false,
+        content: `Hello! I've created a copy of "${session.name}". How can I help you today?`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
       
       // Close dialog
       setIsExistingSessionDialogOpen(false);
@@ -610,6 +731,7 @@ export default function ChatPage() {
                         setIsNewSessionDialogOpen(true);
                         setTempLibrary(selectedLibrary);
                         setTempRAGConfigId(selectedRAGConfigId);
+                        setTempSessionName("");
                       }}
                     >
                       <div className="flex items-center">
@@ -628,14 +750,10 @@ export default function ChatPage() {
                     >
                       <div className="flex items-center">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                          <path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/>
-                          <path d="M8 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2"/>
-                          <path d="M8 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
-                          <path d="M15 5h1a2 2 0 0 1 2 2v1"/>
-                          <path d="M22 12h-4"/>
-                          <path d="M18 10l-2 2 2 2"/>
+                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
                         </svg>
-                        From existing session
+                        Create from existing
                       </div>
                     </button>
                   </div>
@@ -645,16 +763,42 @@ export default function ChatPage() {
             
             {/* Chat list */}
             <div className="flex flex-col">
-              {savedChatSessions.map((session) => (
+              {chatSessions.map((session) => (
                 <div 
                   key={session.id} 
-                  className={`p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
+                  className={`group p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
                   onClick={() => loadExistingSession(session.id)}
                 >
-                  <div className="font-medium">{session.name}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{session.name}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0 hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      title="Delete session"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18"/>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
+                        <line x1="10" x2="10" y1="11" y2="17"/>
+                        <line x1="14" x2="14" y1="11" y2="17"/>
+                      </svg>
+                      <span className="sr-only">Delete session</span>
+                    </Button>
+                  </div>
                 </div>
               ))}
+              {chatSessions.length === 0 && (
+                <div className="p-4 text-center text-muted-foreground">
+                  <div className="text-sm">No chat sessions yet</div>
+                  <div className="text-xs mt-1">Create your first session to get started</div>
+                </div>
+              )}
             </div>
           </aside>
           
@@ -896,22 +1040,31 @@ export default function ChatPage() {
           <Dialog open={isExistingSessionDialogOpen} onOpenChange={setIsExistingSessionDialogOpen}>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>Load Existing Chat Session</DialogTitle>
+                <DialogTitle>Create from Existing Session</DialogTitle>
                 <DialogDescription>
-                  Select a previously configured chat session to continue.
+                  Select a session to copy. A new session with the same configuration will be created with " copy" added to the name.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">
                 <div className="max-h-[60vh] overflow-y-auto">
-                  {savedChatSessions.map((session) => (
+                  {chatSessions.map((session) => (
                     <div 
                       key={session.id} 
                       className="p-4 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-md mb-2"
-                      onClick={() => loadExistingSession(session.id)}
+                      onClick={() => createCopyFromExistingSession(session.id)}
                     >
-                      <div className="flex justify-between">
-                        <div className="font-medium">{session.name}</div>
-                        <div className="text-xs text-muted-foreground">{session.timestamp}</div>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="font-medium">{session.name}</div>
+                          <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
+                        </div>
+                        <div className="text-xs text-muted-foreground ml-2 flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                          </svg>
+                          Copy
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-2">
                         <Badge variant="outline" className="text-xs">
@@ -943,6 +1096,20 @@ export default function ChatPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="session-name" className="text-right">
+                    Name
+                  </Label>
+                  <div className="col-span-3">
+                    <Input
+                      id="session-name"
+                      value={tempSessionName}
+                      onChange={(e) => setTempSessionName(e.target.value)}
+                      placeholder="Enter session name (optional)"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="new-library" className="text-right">
                     Library
@@ -985,7 +1152,10 @@ export default function ChatPage() {
               <DialogFooter>
                 <Button 
                   variant="outline" 
-                  onClick={() => setIsNewSessionDialogOpen(false)}
+                  onClick={() => {
+                    setIsNewSessionDialogOpen(false);
+                    setTempSessionName("");
+                  }}
                 >
                   Cancel
                 </Button>
@@ -994,6 +1164,54 @@ export default function ChatPage() {
                     <path d="M12 5v14M5 12h14"/>
                   </svg>
                   Create Chat
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Session Confirmation Dialog */}
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Delete Chat Session</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete this chat session? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                {deleteSessionId && (
+                  <div className="p-4 bg-muted rounded-md">
+                    <div className="font-medium">
+                      {chatSessions.find(s => s.id === deleteSessionId)?.name}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {chatSessions.find(s => s.id === deleteSessionId)?.timestamp}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setIsDeleteDialogOpen(false);
+                    setDeleteSessionId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive"
+                  onClick={() => deleteSessionId && deleteSession(deleteSessionId)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
+                    <line x1="10" x2="10" y1="11" y2="17"/>
+                    <line x1="14" x2="14" y1="11" y2="17"/>
+                  </svg>
+                  Delete Session
                 </Button>
               </DialogFooter>
             </DialogContent>
