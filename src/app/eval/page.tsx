@@ -63,7 +63,7 @@ interface SelectedModuleConfig {
   parameterValues: { [paramId: string]: string | number | boolean };
 }
 
-// Renamed RAGSystem to RAGConfig
+// Renamed RAGSystem to RAGConfig, now focused on preprocessing and retrieval only
 interface RAGConfig {
   id: string;
   name: string;
@@ -71,7 +71,7 @@ interface RAGConfig {
   parser: SelectedModuleConfig;
   chunker: SelectedModuleConfig;
   retriever: SelectedModuleConfig;
-  generator: SelectedModuleConfig;
+  // generator removed - will be selected separately in evaluation
   availableMetrics: Metric[]; // This remains for now
 }
 
@@ -618,6 +618,9 @@ function EvaluationInterface({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [results, setResults] = useState<EvaluationResults[]>([]);
   const [activeTab, setActiveTab] = useState("run");
+  
+  // Generator selection for evaluation (moved from RAG config)
+  const [selectedGenerator, setSelectedGenerator] = useState<string>("");
   const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({});
 
   // State for the new RAG Config creation/editing UI
@@ -626,7 +629,7 @@ function EvaluationInterface({
   const [selectedParser, setSelectedParser] = useState<string>("");
   const [selectedChunker, setSelectedChunker] = useState<string>("");
   const [selectedRetriever, setSelectedRetriever] = useState<string>("");
-  const [selectedGenerator, setSelectedGenerator] = useState<string>("");
+  // selectedGenerator removed from config creation - now only for evaluation
   const [parserParams, setParserParams] = useState<{ [key: string]: string | number | boolean }>({});
   const [chunkerParams, setChunkerParams] = useState<{ [key: string]: string | number | boolean }>({});
   const [retrieverParams, setRetrieverParams] = useState<{ [key: string]: string | number | boolean }>({});
@@ -650,8 +653,7 @@ function EvaluationInterface({
         setSelectedRetriever(configToLoad.retriever.moduleId);
         setRetrieverParams({...configToLoad.retriever.parameterValues});
 
-        setSelectedGenerator(configToLoad.generator.moduleId);
-        setGeneratorParams({...configToLoad.generator.parameterValues});
+        // Generator is no longer part of RAG config
       } 
     } else if (activeTab !== 'configure') {
     }
@@ -710,7 +712,7 @@ function EvaluationInterface({
   };
 
   const startEvaluation = async () => {
-    if (!selectedRAGConfigId || !selectedSource || !currentRAGConfig || selectedMetrics.length === 0) return;
+    if (!selectedRAGConfigId || !selectedSource || !selectedGenerator || !currentRAGConfig || selectedMetrics.length === 0) return;
 
     setIsEvaluating(true);
 
@@ -823,10 +825,6 @@ function EvaluationInterface({
     setSelectedRetriever(moduleId);
     setRetrieverParams(initializeDefaultParamsForModule('retriever', moduleId));
   };
-  const handleNewConfigGeneratorSelect = (moduleId: string) => {
-    setSelectedGenerator(moduleId);
-    setGeneratorParams(initializeDefaultParamsForModule('generator', moduleId));
-  };
 
   const handleNewConfigParamChange = (
     moduleType: ModuleType, 
@@ -850,12 +848,12 @@ function EvaluationInterface({
   };
 
   const handleSaveConfig = () => {
-    if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever || !selectedGenerator) {
-      alert("Please provide a configuration name and select a parser, chunker, retriever, and generator.");
+    if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever) {
+      alert("Please provide a configuration name and select a parser, chunker, and retriever.");
       return;
     }
     if (ragConfigs.some(config => config.name === currentConfigName.trim())) {
-      alert("A RAG configuration with this name already exists. Please choose a different name.");
+      alert("A Preprocessing & Retrieval configuration with this name already exists. Please choose a different name.");
       return;
     }
 
@@ -875,15 +873,12 @@ function EvaluationInterface({
         moduleId: selectedRetriever,
         parameterValues: retrieverParams,
       },
-      generator: {
-        moduleId: selectedGenerator,
-        parameterValues: generatorParams,
-      },
+      // generator removed from config
       availableMetrics: Object.values(ALL_METRICS),
     };
 
     setRagConfigs(prev => [...prev, newConfig]);
-    alert("RAG Configuration saved! You can now select it for evaluation in the 'Run Evaluation' tab.");
+    alert("Preprocessing & Retrieval Configuration saved! You can now select it for evaluation in the 'Run Evaluation' tab.");
 
     setCurrentConfigName("");
     setCurrentConfigDescription("");
@@ -893,8 +888,7 @@ function EvaluationInterface({
     setChunkerParams({});
     setSelectedRetriever("");
     setRetrieverParams({});
-    setSelectedGenerator("");
-    setGeneratorParams({});
+    // generator reset removed
   };
 
   const renderModuleSelector = (
@@ -1024,7 +1018,7 @@ function EvaluationInterface({
     <div className="space-y-6 p-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="configure">Configure New RAG</TabsTrigger>
+          <TabsTrigger value="configure">Configure Preprocessing & Retrieval</TabsTrigger>
           <TabsTrigger value="run">Run Evaluation</TabsTrigger>
           <TabsTrigger value="results">View Results</TabsTrigger>
         </TabsList>
@@ -1032,16 +1026,17 @@ function EvaluationInterface({
         <TabsContent value="configure" className="pt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Create New RAG Configuration</CardTitle>
+              <CardTitle>Create New Preprocessing & Retrieval Configuration</CardTitle>
               <CardDescription>
-                Define a new RAG pipeline by selecting modules and setting their parameters. 
+                Define a new preprocessing and retrieval pipeline by selecting modules and setting their parameters. 
+                Generator will be selected separately during evaluation.
                 You can also select an existing configuration from the 'Run Evaluation' tab dropdown to load its settings here as a template.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="config-name">Configuration Name</Label>
-                <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom RAG" />
+                <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="config-description">Description</Label>
@@ -1051,11 +1046,10 @@ function EvaluationInterface({
               {renderModuleSelector('parser', selectedParser, handleNewConfigParserSelect, parserParams, handleNewConfigParamChange)}
               {renderModuleSelector('chunker', selectedChunker, handleNewConfigChunkerSelect, chunkerParams, handleNewConfigParamChange)}
               {renderModuleSelector('retriever', selectedRetriever, handleNewConfigRetrieverSelect, retrieverParams, handleNewConfigParamChange)}
-              {renderModuleSelector('generator', selectedGenerator, handleNewConfigGeneratorSelect, generatorParams, handleNewConfigParamChange)}
 
               <Button className="w-full" onClick={handleSaveConfig} 
-                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever || !selectedGenerator}>
-                Save RAG Configuration
+                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever}>
+                Save Preprocessing & Retrieval Configuration
               </Button> 
             </CardContent>
           </Card>
@@ -1065,7 +1059,7 @@ function EvaluationInterface({
           <Card>
             <CardHeader>
                 <CardTitle>Run Evaluation</CardTitle>
-                <CardDescription>Select a RAG configuration and a data source to start an evaluation run.</CardDescription>
+                <CardDescription>Select a preprocessing & retrieval configuration, generator, and data source to start an evaluation run.</CardDescription>
             </CardHeader>
             <CardContent className="pt-6">
               <div className="space-y-6">
@@ -1090,7 +1084,7 @@ function EvaluationInterface({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="rag-config-eval">RAG Configuration</Label>
+                    <Label htmlFor="rag-config-eval">Preprocessing & Retrieval Config</Label>
                     <Select
                       value={selectedRAGConfigId} 
                       onValueChange={(value) => {
@@ -1098,7 +1092,7 @@ function EvaluationInterface({
                       }}
                     >
                       <SelectTrigger id="rag-config-eval"> 
-                        <SelectValue placeholder="Select RAG configuration" /> 
+                        <SelectValue placeholder="Select preprocessing & retrieval config" /> 
                       </SelectTrigger>
                       <SelectContent position="popper">
                         {ragConfigs.map((config) => ( 
@@ -1111,7 +1105,40 @@ function EvaluationInterface({
                   </div>
                 </div>
 
-                {currentRAGConfig && currentSourceDetails && ( 
+                {/* Generator Selection */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="generator-eval">Generator</Label>
+                    <Select
+                      value={selectedGenerator}
+                      onValueChange={(value) => {
+                        setSelectedGenerator(value);
+                        setGeneratorParams(initializeDefaultParamsForModule('generator', value));
+                      }}
+                    >
+                      <SelectTrigger id="generator-eval">
+                        <SelectValue placeholder="Select generator" />
+                      </SelectTrigger>
+                      <SelectContent position="popper">
+                        {AVAILABLE_MODULES.generator.map((generator) => (
+                          <SelectItem key={generator.id} value={generator.id}>
+                            {generator.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Generator Parameters */}
+                  {selectedGenerator && (
+                    <div className="p-4 border rounded-md bg-muted/20">
+                      <h4 className="text-sm font-medium mb-3">Generator Parameters</h4>
+                      {renderModuleSelector('generator', selectedGenerator, () => {}, generatorParams, handleNewConfigParamChange)}
+                    </div>
+                  )}
+                </div>
+
+                {currentRAGConfig && currentSourceDetails && selectedGenerator && ( 
                   <Card className="bg-muted/50">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg">Evaluation Setup Details</CardTitle>
@@ -1128,27 +1155,30 @@ function EvaluationInterface({
                             )}
                         </div>
                         <div className="pt-2 border-t">
-                             <p className="mt-2"><span className="font-semibold">RAG Configuration:</span> {currentRAGConfig.name}</p> 
+                             <p className="mt-2"><span className="font-semibold">Preprocessing & Retrieval Config:</span> {currentRAGConfig.name}</p> 
                             <p className="text-xs text-muted-foreground">{currentRAGConfig.description}</p>
                             <div className="mt-2 space-y-1">
                                 <p className="text-xs"><span className="font-semibold">Parser:</span> {AVAILABLE_MODULES.parser.find(m => m.id === currentRAGConfig.parser.moduleId)?.name || 'N/A'}</p>
                                 <p className="text-xs"><span className="font-semibold">Chunker:</span> {AVAILABLE_MODULES.chunker.find(m => m.id === currentRAGConfig.chunker.moduleId)?.name || 'N/A'}</p>
                                 <p className="text-xs"><span className="font-semibold">Retriever:</span> {AVAILABLE_MODULES.retriever.find(m => m.id === currentRAGConfig.retriever.moduleId)?.name || 'N/A'}</p>
-                                <p className="text-xs"><span className="font-semibold">Generator:</span> {AVAILABLE_MODULES.generator.find(m => m.id === currentRAGConfig.generator.moduleId)?.name || 'N/A'}</p>
                             </div>
+                        </div>
+                        <div className="pt-2 border-t">
+                            <p><span className="font-semibold">Generator:</span> {AVAILABLE_MODULES.generator.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
+                            <p className="text-xs text-muted-foreground">{AVAILABLE_MODULES.generator.find(m => m.id === selectedGenerator)?.description || ''}</p>
                         </div>
                     </CardContent>
                   </Card>
                 )}
 
-                {currentSourceDetails && currentRAGConfig && ( 
+                {currentSourceDetails && currentRAGConfig && selectedGenerator && ( 
                   <div className="space-y-3 pt-3">
                     <Label className="text-base font-medium">Select Metrics to Evaluate</Label>
                     <p className="text-xs text-muted-foreground">
                       {selectedSource && !selectedRAGConfigId && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
                        selectedSource && selectedRAGConfigId && currentSourceDetails && currentRAGConfig ? `Common metrics for ${currentSourceDetails.name} and ${currentRAGConfig.name}:` : 
                        !selectedSource && selectedRAGConfigId && currentRAGConfig ? `Metrics available in ${currentRAGConfig.name}:` : 
-                       "Select a Source and RAG Configuration to see available metrics."}
+                       "Select a Source, Preprocessing & Retrieval Config, and Generator to see available metrics."}
                     </p>
                     {displayableMetrics.length > 0 ? (
                       ['Retrieval', 'Retrieval Token', 'Generation'].map(category => {
@@ -1221,7 +1251,7 @@ function EvaluationInterface({
                 <Button
                   className="w-full pt-2"
                   onClick={startEvaluation}
-                  disabled={!selectedRAGConfigId || !selectedSource || selectedMetrics.length === 0 || isEvaluating} 
+                  disabled={!selectedRAGConfigId || !selectedSource || !selectedGenerator || selectedMetrics.length === 0 || isEvaluating} 
                 >
                   {isEvaluating ? "Evaluating..." : "Start Evaluation & View Results"}
                 </Button>
@@ -1240,7 +1270,7 @@ function EvaluationInterface({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>RAG Configuration</TableHead> 
+                    <TableHead>Preprocessing & Retrieval Config</TableHead> 
                     <TableHead>Source</TableHead>
                     <TableHead>Start Time</TableHead>
                     <TableHead>End Time</TableHead>
@@ -1313,7 +1343,7 @@ export default function EvalPage() {
   const [sources, setSources] = useState<Source[]>([]);
 
   useEffect(() => {
-    // Updated demo RAG configurations
+    // Updated demo RAG configurations - now without generator
     const demoConfigs: RAGConfig[] = [
       {
         id: "rag1_basic_autorag",
@@ -1322,7 +1352,7 @@ export default function EvalPage() {
         parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
         chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
         retriever: { moduleId: "bm25", parameterValues: { top_k: 5, bm25_tokenizer: "porter_stemmer" } },
-        generator: { moduleId: "openai_llm", parameterValues: { llm: "gpt-3.5-turbo", max_tokens: 256, temperature: 0.7, top_p: 1.0 } },
+        // generator removed from config
         availableMetrics: [
           ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
           ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
@@ -1336,7 +1366,7 @@ export default function EvalPage() {
         parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
         chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
         retriever: { moduleId: "vectordb", parameterValues: { top_k: 3, vectordb: "chroma", embedding_model: "OpenAI Embedding API", embedding_batch: 128, similarity_metric: "cosine" } },
-        generator: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4", max_tokens: 512, temperature: 0.5, top_p: 0.9 } },
+        // generator removed from config
         availableMetrics: [
           ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
           ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
@@ -1350,7 +1380,7 @@ export default function EvalPage() {
         parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
         chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
         retriever: { moduleId: "hybrid_rrf", parameterValues: { top_k: 10, weight: 0.6 } },
-        generator: { moduleId: "vllm", parameterValues: { llm: "meta-llama/Llama-2-7b-chat-hf", max_tokens: 1024, temperature: 0.8 } },
+        // generator removed from config
         availableMetrics: [
           ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
           ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,

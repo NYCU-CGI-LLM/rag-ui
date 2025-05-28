@@ -42,8 +42,14 @@ interface RAGConfig {
   parser: SelectedModuleConfig;
   chunker: SelectedModuleConfig;
   retriever: SelectedModuleConfig;
-  generator: SelectedModuleConfig;
+  // generator removed - managed separately in chat
   availableMetrics: any[]; // Simplified for chat usage
+}
+
+// Default generator configuration for chat sessions
+interface ChatGeneratorConfig {
+  moduleId: string;
+  parameterValues: { [paramId: string]: string | number | boolean };
 }
 
 // Parameter definitions for different generator types
@@ -288,7 +294,7 @@ const libraries = [
   },
 ];
 
-// Available RAG Configurations (same as in eval page)
+// Available RAG Configurations (same as in eval page) - now without generator
 const availableRAGConfigs: RAGConfig[] = [
   {
     id: "rag1_basic_autorag",
@@ -297,7 +303,7 @@ const availableRAGConfigs: RAGConfig[] = [
     parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
     chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
     retriever: { moduleId: "bm25", parameterValues: { top_k: 5, bm25_tokenizer: "porter_stemmer" } },
-    generator: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
+    // generator removed from RAG config
     availableMetrics: [],
   },
   {
@@ -307,7 +313,7 @@ const availableRAGConfigs: RAGConfig[] = [
     parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
     chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
     retriever: { moduleId: "vectordb", parameterValues: { top_k: 3, vectordb: "chroma", embedding_model: "OpenAI Embedding API", embedding_batch: 128, similarity_metric: "cosine" } },
-    generator: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o", max_tokens: 512, temperature: 0.5, top_p: 0.9 } },
+    // generator removed from RAG config
     availableMetrics: [],
   },
   {
@@ -317,18 +323,19 @@ const availableRAGConfigs: RAGConfig[] = [
     parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
     chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
     retriever: { moduleId: "hybrid_rrf", parameterValues: { top_k: 10, weight: 0.6 } },
-    generator: { moduleId: "vllm", parameterValues: { llm: "meta-llama/Llama-2-7b-chat-hf", max_tokens: 1024, temperature: 0.8 } },
+    // generator removed from RAG config
     availableMetrics: [],
   },
 ];
 
-// Chat session interface
+// Chat session interface - now includes generator config
 interface ChatSession {
   id: string;
   name: string;
   timestamp: string;
   library: string;
   ragConfigId: string;
+  generatorConfig: ChatGeneratorConfig; // Add generator config to chat session
 }
 
 // Mock saved chat sessions using RAG configs - now as initial data
@@ -339,6 +346,7 @@ const initialChatSessions: ChatSession[] = [
     timestamp: "Today, 10:30 AM",
     library: "tech-docs",
     ragConfigId: "rag1_basic_autorag",
+    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
   },
   { 
     id: "session-2", 
@@ -346,6 +354,7 @@ const initialChatSessions: ChatSession[] = [
     timestamp: "Yesterday, 3:45 PM",
     library: "research-papers",
     ragConfigId: "rag2_vector_autorag",
+    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o", max_tokens: 512, temperature: 0.5, top_p: 0.9 } },
   },
   { 
     id: "session-3", 
@@ -353,6 +362,7 @@ const initialChatSessions: ChatSession[] = [
     timestamp: "Aug 15, 2:15 PM",
     library: "company-wiki",
     ragConfigId: "rag3_hybrid_autorag",
+    generatorConfig: { moduleId: "vllm", parameterValues: { llm: "meta-llama/Llama-2-7b-chat-hf", max_tokens: 1024, temperature: 0.8 } },
   },
   { 
     id: "session-4", 
@@ -360,6 +370,7 @@ const initialChatSessions: ChatSession[] = [
     timestamp: "Aug 14, 11:20 AM",
     library: "product-manuals",
     ragConfigId: "rag1_basic_autorag",
+    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
   },
 ];
 
@@ -440,13 +451,18 @@ export default function ChatPage() {
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  // Initialize generator params when RAG config changes
+  // Initialize generator params when session changes (now from session's generator config)
   useEffect(() => {
-    const currentRAGConfig = availableRAGConfigs.find(c => c.id === selectedRAGConfigId);
-    if (currentRAGConfig) {
-      setGeneratorParams({...currentRAGConfig.generator.parameterValues});
+    if (selectedSessionId) {
+      const session = chatSessions.find(s => s.id === selectedSessionId);
+      if (session && session.generatorConfig) {
+        setGeneratorParams({...session.generatorConfig.parameterValues});
+      }
+    } else {
+      // Default generator params when no session is selected
+      setGeneratorParams({ llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 });
     }
-  }, [selectedRAGConfigId]);
+  }, [selectedSessionId, chatSessions]);
 
   // Load initial session data on first render
   useEffect(() => {
@@ -572,6 +588,7 @@ export default function ChatPage() {
       timestamp: timestamp,
       library: tempLibrary,
       ragConfigId: tempRAGConfigId,
+      generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
     };
 
     // Add to sessions list
@@ -674,13 +691,17 @@ export default function ChatPage() {
         hour12: true
       });
 
-      // Create new session object with "copy" suffix
+      // Create new session object with "copy" suffix, copying all original configs
       const newSession: ChatSession = {
         id: newSessionId,
         name: `${session.name} copy`,
         timestamp: timestamp,
         library: session.library,
         ragConfigId: session.ragConfigId,
+        generatorConfig: { 
+          moduleId: session.generatorConfig.moduleId, 
+          parameterValues: { ...session.generatorConfig.parameterValues } 
+        },
       };
 
       // Add to sessions list
@@ -884,117 +905,121 @@ export default function ChatPage() {
             </div>
 
             {/* Generator Parameters */}
-            {currentRAGConfig && (
+            {selectedSessionId && (
               <div>
                 <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Generator Settings</h3>
                 <div className="space-y-4">
-                  {GENERATOR_PARAM_DEFINITIONS[currentRAGConfig.generator.moduleId]?.map(param => (
-                    <div key={param.id} className="space-y-1.5">
-                      <Label htmlFor={`generator-${param.id}`} className="text-sm">{param.name}</Label>
-                      {param.description && <p className="text-xs text-muted-foreground -mt-1">{param.description}</p>}
-                      
-                      {param.type === 'string' && (
-                        <Input
-                          id={`generator-${param.id}`}
-                          type="text"
-                          value={generatorParams[param.id] as string || ''}
-                          onChange={(e) => handleGeneratorParamChange(param.id, e.target.value)}
-                          placeholder={param.defaultValue as string}
-                        />
-                      )}
-                      
-                      {param.type === 'number' && (
-                        <>
-                          {(param.id === 'temperature' || param.id === 'top_p') ? (
-                            // Use simple range slider for temperature and top_p
-                            <>
-                              <input
-                                id={`generator-${param.id}`}
-                                type="range"
-                                min={param.min}
-                                max={param.max}
-                                step={param.step}
-                                value={generatorParams[param.id] as number ?? param.defaultValue}
-                                onChange={(e) => handleGeneratorParamChange(param.id, parseFloat(e.target.value))}
-                                className="w-full mt-1"
-                              />
-                              <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                <span>{param.min}</span>
-                                <span>{generatorParams[param.id] ?? param.defaultValue}</span>
-                                <span>{param.max}</span>
-                              </div>
-                            </>
-                          ) : (
-                            // Use regular number input for other numeric parameters
-                            <Input
-                              id={`generator-${param.id}`}
-                              type="number"
-                              value={generatorParams[param.id] as number ?? ''}
-                              onChange={(e) => {
-                                const rawValue = e.target.value;
-                                if (rawValue === '') {
-                                  handleGeneratorParamChange(param.id, '');
-                                } else {
-                                  const val = parseFloat(rawValue);
-                                  if (!isNaN(val)) {
-                                    handleGeneratorParamChange(param.id, val);
-                                  }
-                                }
-                              }}
-                              onBlur={(e) => { 
-                                const rawValue = e.target.value;
-                                if (rawValue === '' || isNaN(parseFloat(rawValue))) {
-                                  handleGeneratorParamChange(param.id, param.defaultValue as number);
-                                }
-                              }}
-                              min={param.min}
-                              max={
-                                // Dynamic max for OpenAI LLM max_tokens based on selected model
-                                currentRAGConfig.generator.moduleId === 'openai_llm' && param.id === 'max_tokens' 
-                                  ? MAX_TOKEN_DICT[generatorParams['llm'] as string] || param.max
-                                  : param.max
-                              }
-                              step={param.step}
-                              placeholder={String(param.defaultValue)}
-                            />
-                          )}
-                        </>
-                      )}
-                      
-                      {param.type === 'boolean' && (
-                        <div className="flex items-center space-x-2 pt-1">
-                          <input
+                  {(() => {
+                    const currentSession = chatSessions.find(s => s.id === selectedSessionId);
+                    const generatorModuleId = currentSession?.generatorConfig?.moduleId || 'openai_llm';
+                    return GENERATOR_PARAM_DEFINITIONS[generatorModuleId]?.map(param => (
+                      <div key={param.id} className="space-y-1.5">
+                        <Label htmlFor={`generator-${param.id}`} className="text-sm">{param.name}</Label>
+                        {param.description && <p className="text-xs text-muted-foreground -mt-1">{param.description}</p>}
+                        
+                        {param.type === 'string' && (
+                          <Input
                             id={`generator-${param.id}`}
-                            type="checkbox"
-                            checked={generatorParams[param.id] as boolean ?? false}
-                            onChange={(e) => handleGeneratorParamChange(param.id, e.target.checked)}
-                            className="rounded"
+                            type="text"
+                            value={generatorParams[param.id] as string || ''}
+                            onChange={(e) => handleGeneratorParamChange(param.id, e.target.value)}
+                            placeholder={param.defaultValue as string}
                           />
-                          <Label htmlFor={`generator-${param.id}`} className="text-sm font-normal cursor-pointer">
-                            {generatorParams[param.id] ? "Enabled" : "Disabled"} 
-                          </Label>
-                        </div>
-                      )}
-                      
-                      {param.type === 'select' && param.options && (
-                        <Select
-                          value={generatorParams[param.id] as string || ''}
-                          onValueChange={(value) => handleGeneratorParamChange(param.id, value)}
-                        >
-                          <SelectTrigger id={`generator-${param.id}`}>
-                            <SelectValue placeholder={`Select ${param.name}`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {param.options.map(option => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                  ))}
+                        )}
+                        
+                        {param.type === 'number' && (
+                          <>
+                            {(param.id === 'temperature' || param.id === 'top_p') ? (
+                              // Use simple range slider for temperature and top_p
+                              <>
+                                <input
+                                  id={`generator-${param.id}`}
+                                  type="range"
+                                  min={param.min}
+                                  max={param.max}
+                                  step={param.step}
+                                  value={generatorParams[param.id] as number ?? param.defaultValue}
+                                  onChange={(e) => handleGeneratorParamChange(param.id, parseFloat(e.target.value))}
+                                  className="w-full mt-1"
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                  <span>{param.min}</span>
+                                  <span>{generatorParams[param.id] ?? param.defaultValue}</span>
+                                  <span>{param.max}</span>
+                                </div>
+                              </>
+                            ) : (
+                              // Use regular number input for other numeric parameters
+                              <Input
+                                id={`generator-${param.id}`}
+                                type="number"
+                                value={generatorParams[param.id] as number ?? ''}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  if (rawValue === '') {
+                                    handleGeneratorParamChange(param.id, '');
+                                  } else {
+                                    const val = parseFloat(rawValue);
+                                    if (!isNaN(val)) {
+                                      handleGeneratorParamChange(param.id, val);
+                                    }
+                                  }
+                                }}
+                                onBlur={(e) => { 
+                                  const rawValue = e.target.value;
+                                  if (rawValue === '' || isNaN(parseFloat(rawValue))) {
+                                    handleGeneratorParamChange(param.id, param.defaultValue as number);
+                                  }
+                                }}
+                                min={param.min}
+                                max={
+                                  // Dynamic max for OpenAI LLM max_tokens based on selected model
+                                  generatorModuleId === 'openai_llm' && param.id === 'max_tokens' 
+                                    ? MAX_TOKEN_DICT[generatorParams['llm'] as string] || param.max
+                                    : param.max
+                                }
+                                step={param.step}
+                                placeholder={String(param.defaultValue)}
+                              />
+                            )}
+                          </>
+                        )}
+                        
+                        {param.type === 'boolean' && (
+                          <div className="flex items-center space-x-2 pt-1">
+                            <input
+                              id={`generator-${param.id}`}
+                              type="checkbox"
+                              checked={generatorParams[param.id] as boolean ?? false}
+                              onChange={(e) => handleGeneratorParamChange(param.id, e.target.checked)}
+                              className="rounded"
+                            />
+                            <Label htmlFor={`generator-${param.id}`} className="text-sm font-normal cursor-pointer">
+                              {generatorParams[param.id] ? "Enabled" : "Disabled"} 
+                            </Label>
+                          </div>
+                        )}
+                        
+                        {param.type === 'select' && param.options && (
+                          <Select
+                            value={generatorParams[param.id] as string || ''}
+                            onValueChange={(value) => handleGeneratorParamChange(param.id, value)}
+                          >
+                            <SelectTrigger id={`generator-${param.id}`}>
+                              <SelectValue placeholder={`Select ${param.name}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {param.options.map(option => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ));
+                  })()}
                 </div>
                 
                 {/* Action buttons at the bottom */}
@@ -1003,9 +1028,9 @@ export default function ChatPage() {
                     variant="outline" 
                     size="sm"
                     onClick={() => {
-                      const currentRAGConfig = availableRAGConfigs.find(c => c.id === selectedRAGConfigId);
-                      if (currentRAGConfig) {
-                        setGeneratorParams({...currentRAGConfig.generator.parameterValues});
+                      const currentSession = chatSessions.find(s => s.id === selectedSessionId);
+                      if (currentSession && currentSession.generatorConfig) {
+                        setGeneratorParams({...currentSession.generatorConfig.parameterValues});
                       }
                     }}
                     disabled={isApplying}
