@@ -84,7 +84,7 @@ export default function LibraryPage() {
     setIsCreatingLibrary(true);
   };
 
-  const handleSaveNewLibrary = () => {
+  const handleSaveNewLibrary = async () => {
     if (!newLibraryName.trim()) {
       alert("Library name is required");
       return;
@@ -96,22 +96,38 @@ export default function LibraryPage() {
     };
 
     try {
-      console.log("Simulating create library with:", newLibraryData);
-      const createdLibrary: Library = {
-        id: `local_${Date.now()}`,
-        library_name: newLibraryData.library_name,
-        description: newLibraryData.description,
-        stats: { file_count: 0, total_size: 0 },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setLibraries((prev) => [...prev, createdLibrary]);
-      setNewLibraryName("");
-      setNewLibraryDescription("");
-      setIsCreatingLibrary(false);
+      const response = await fetch(`${API_URL}/library/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "accept": "application/json",
+        },
+        body: JSON.stringify(newLibraryData),
+      });
+
+      if (response.status === 201) {
+        const createdLibrary: Library = await response.json();
+        setLibraries((prev) => [...prev, createdLibrary]);
+        setNewLibraryName("");
+        setNewLibraryDescription("");
+        setIsCreatingLibrary(false);
+      } else {
+        const errorData = await response.json();
+        let errorMessage = `Failed to create library. Status: ${response.status}`;
+        if (response.status === 409) {
+          errorMessage = "Library name already exists. Please choose a different name.";
+        } else if (response.status === 422 && errorData.detail) {
+          const validationErrors = errorData.detail.map((err: any) => `${err.loc.join('.')} - ${err.msg}`).join('\\n');
+          errorMessage = `Validation Error:\\n${validationErrors}`;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        }
+        console.error("Error creating library:", errorData);
+        alert(errorMessage);
+      }
     } catch (error) {
       console.error("Error creating library:", error);
-      alert("Failed to create library. See console for details.");
+      alert("An unexpected error occurred while creating the library. See console for details.");
     }
   };
 
