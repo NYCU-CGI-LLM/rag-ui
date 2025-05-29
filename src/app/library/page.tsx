@@ -43,10 +43,11 @@ interface Library {
 }
 
 interface Document {
-  id: number;
-  name: string;
-  size: string;
-  uploadDate: string;
+  id: string;
+  file_name: string;
+  size_bytes: number;
+  uploaded_at: string;
+  mime_type: string;
 }
 
 export default function LibraryPage() {
@@ -56,7 +57,7 @@ export default function LibraryPage() {
   const [isCreatingLibrary, setIsCreatingLibrary] = useState(false);
   const [newLibraryName, setNewLibraryName] = useState("");
   const [newLibraryDescription, setNewLibraryDescription] = useState("");
-  const [selectedDocuments, setSelectedDocuments] = useState<number[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedLibraryName, setEditedLibraryName] = useState("");
@@ -115,17 +116,39 @@ export default function LibraryPage() {
   };
 
   const handleSelectLibrary = async (library: Library) => {
-    setCurrentLibrary(library);
     setSelectedDocuments([]);
     try {
-      const response = await fetch(`${API_URL}/library/${library.id}/files`);
-      if (!response.ok) throw new Error("Failed to fetch files");
-      const text = await response.text();
-      console.log("Files API raw:", text);
-      const data = JSON.parse(text);
-      setDocuments(data);
+      const response = await fetch(`${API_URL}/library/${library.id}`);
+      if (!response.ok) {
+        let errorText = "Failed to fetch library details";
+        try {
+          const errorData = await response.json();
+          errorText = errorData.detail || errorText;
+        } catch (e) {
+          // Ignore if response is not JSON
+        }
+        throw new Error(errorText);
+      }
+      const detailedLibraryData = await response.json();
+      console.log("Detailed Library API raw:", detailedLibraryData);
+
+      setCurrentLibrary(detailedLibraryData);
+
+      const fetchedFiles = detailedLibraryData.files?.map((file: any) => ({
+        id: file.id,
+        file_name: file.file_name,
+        size_bytes: file.size_bytes,
+        uploaded_at: file.uploaded_at,
+        mime_type: file.mime_type,
+      })) || [];
+      
+      setDocuments(fetchedFiles);
+
     } catch (error) {
-      console.error("Error loading files:", error);
+      console.error("Error loading library details or files:", error);
+      alert(`Error loading library: ${error instanceof Error ? error.message : String(error)}`);
+      setCurrentLibrary(null);
+      setDocuments([]);
     }
   };
 
@@ -157,7 +180,7 @@ export default function LibraryPage() {
     }
   };
 
-  const toggleDocumentSelection = (docId: number) => {
+  const toggleDocumentSelection = (docId: string) => {
     setSelectedDocuments((prevSelected) =>
       prevSelected.includes(docId)
         ? prevSelected.filter((id) => id !== docId)
@@ -351,6 +374,7 @@ export default function LibraryPage() {
                       <th className="text-left py-2 px-4">File Name</th>
                       <th className="text-left py-2 px-4">Size</th>
                       <th className="text-left py-2 px-4">Upload Date</th>
+                      <th className="text-left py-2 px-4">Type</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -360,12 +384,13 @@ export default function LibraryPage() {
                             <Checkbox
                               checked={selectedDocuments.includes(file.id)}
                               onCheckedChange={() => toggleDocumentSelection(file.id)}
-                              aria-label={`Select document ${file.name}`}
+                              aria-label={`Select document ${file.file_name}`}
                             />
                           </td>
-                        <td className="py-2 px-4">{file.name}</td>
-                        <td className="py-2 px-4">{file.size}</td>
-                        <td className="py-2 px-4">{file.uploadDate}</td>
+                        <td className="py-2 px-4">{file.file_name}</td>
+                        <td className="py-2 px-4">{(file.size_bytes / (1024*1024)).toFixed(2)} MB</td>
+                        <td className="py-2 px-4">{new Date(file.uploaded_at).toLocaleDateString()}</td>
+                        <td className="py-2 px-4">{file.mime_type}</td>
                       </tr>
                     ))}
                   </tbody>
