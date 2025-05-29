@@ -27,6 +27,244 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
+// Import RAG configuration types and data from eval page
+type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator';
+
+interface SelectedModuleConfig {
+  moduleId: string;
+  parameterValues: { [paramId: string]: string | number | boolean };
+}
+
+interface RAGConfig {
+  id: string;
+  name: string;
+  description: string;
+  parser: SelectedModuleConfig;
+  chunker: SelectedModuleConfig;
+  retriever: SelectedModuleConfig;
+  // generator removed - managed separately in chat
+  availableMetrics: any[]; // Simplified for chat usage
+}
+
+// Default generator configuration for chat sessions
+interface ChatGeneratorConfig {
+  moduleId: string;
+  parameterValues: { [paramId: string]: string | number | boolean };
+}
+
+// Parameter definitions for different generator types
+interface ParameterDefinition {
+  id: string;
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'select';
+  defaultValue: string | number | boolean;
+  options?: string[];
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+// OpenAI model token limits (same as eval page)
+const MAX_TOKEN_DICT: { [key: string]: number } = {
+  "gpt-4.5-preview": 128_000,
+  "gpt-4.5-preview-2025-02-27": 128_000,
+  "o1": 200_000,
+  "o1-preview": 128_000,
+  "o1-preview-2024-09-12": 128_000,
+  "o1-mini": 128_000,
+  "o1-mini-2024-09-12": 128_000,
+  "o3-mini": 200_000,
+  "gpt-4o-mini": 128_000,
+  "gpt-4o-mini-2024-07-18": 128_000,
+  "gpt-4o": 128_000,
+  "gpt-4o-2024-08-06": 128_000,
+  "gpt-4o-2024-05-13": 128_000,
+  "chatgpt-4o-latest": 128_000,
+  "gpt-4-turbo": 128_000,
+  "gpt-4-turbo-2024-04-09": 128_000,
+  "gpt-4-turbo-preview": 128_000,
+  "gpt-4-0125-preview": 128_000,
+  "gpt-4-1106-preview": 128_000,
+  "gpt-4-vision-preview": 128_000,
+  "gpt-4-1106-vision-preview": 128_000,
+  "gpt-4": 8_192,
+  "gpt-4-0613": 8_192,
+  "gpt-4-32k": 32_768,
+  "gpt-4-32k-0613": 32_768,
+  "gpt-3.5-turbo-0125": 16_385,
+  "gpt-3.5-turbo": 16_385,
+  "gpt-3.5-turbo-1106": 16_385,
+  "gpt-3.5-turbo-instruct": 4_096,
+  "gpt-3.5-turbo-16k": 16_385,
+  "gpt-3.5-turbo-0613": 4_096,
+  "gpt-3.5-turbo-16k-0613": 16_385,
+};
+
+// Generator parameter definitions
+const GENERATOR_PARAM_DEFINITIONS: { [generatorId: string]: ParameterDefinition[] } = {
+  openai_llm: [
+    { 
+      id: "llm", 
+      name: "LLM Model", 
+      type: "select", 
+      defaultValue: "gpt-4o-mini", 
+      options: [
+        "gpt-4.5-preview",
+        "gpt-4.5-preview-2025-02-27",
+        "o1",
+        "o1-preview",
+        "o1-preview-2024-09-12",
+        "o1-mini",
+        "o1-mini-2024-09-12",
+        "o3-mini",
+        "gpt-4o-mini",
+        "gpt-4o-mini-2024-07-18",
+        "gpt-4o",
+        "gpt-4o-2024-08-06",
+        "gpt-4o-2024-05-13",
+        "chatgpt-4o-latest",
+        "gpt-4-turbo",
+        "gpt-4-turbo-2024-04-09",
+        "gpt-4-turbo-preview",
+        "gpt-4-0125-preview",
+        "gpt-4-1106-preview",
+        "gpt-4-vision-preview",
+        "gpt-4-1106-vision-preview",
+        "gpt-4",
+        "gpt-4-0613",
+        "gpt-4-32k",
+        "gpt-4-32k-0613",
+        "gpt-3.5-turbo-0125",
+        "gpt-3.5-turbo",
+        "gpt-3.5-turbo-1106",
+        "gpt-3.5-turbo-instruct",
+        "gpt-3.5-turbo-16k",
+        "gpt-3.5-turbo-0613",
+        "gpt-3.5-turbo-16k-0613"
+      ],
+      description: "OpenAI model to use for generation."
+    },
+    { 
+      id: "max_tokens", 
+      name: "Max Tokens", 
+      type: "number", 
+      defaultValue: 4096, 
+      min: 1, 
+      max: 200000, 
+      step: 1,
+      description: "Maximum number of tokens to generate."
+    },
+    { 
+      id: "temperature", 
+      name: "Temperature", 
+      type: "number", 
+      defaultValue: 0.7, 
+      min: 0.0, 
+      max: 2.0, 
+      step: 0.1,
+      description: "Controls randomness in generation."
+    },
+    { 
+      id: "top_p", 
+      name: "Top P", 
+      type: "number", 
+      defaultValue: 1.0, 
+      min: 0.0, 
+      max: 1.0, 
+      step: 0.01,
+      description: "Controls diversity via nucleus sampling."
+    }
+  ],
+  vllm: [
+    { 
+      id: "llm", 
+      name: "LLM Model", 
+      type: "string", 
+      defaultValue: "meta-llama/Llama-2-7b-chat-hf",
+      description: "Model name or path for vLLM."
+    },
+    { 
+      id: "max_tokens", 
+      name: "Max Tokens", 
+      type: "number", 
+      defaultValue: 256, 
+      min: 1, 
+      max: 4096, 
+      step: 1,
+      description: "Maximum number of tokens to generate."
+    },
+    { 
+      id: "temperature", 
+      name: "Temperature", 
+      type: "number", 
+      defaultValue: 0.7, 
+      min: 0.0, 
+      max: 2.0, 
+      step: 0.1,
+      description: "Controls randomness in generation."
+    }
+  ],
+  vllm_api: [
+    { 
+      id: "llm", 
+      name: "LLM Model", 
+      type: "string", 
+      defaultValue: "meta-llama/Llama-2-7b-chat-hf",
+      description: "Model name for vLLM API."
+    },
+    { 
+      id: "max_tokens", 
+      name: "Max Tokens", 
+      type: "number", 
+      defaultValue: 256, 
+      min: 1, 
+      max: 4096, 
+      step: 1,
+      description: "Maximum number of tokens to generate."
+    },
+    { 
+      id: "temperature", 
+      name: "Temperature", 
+      type: "number", 
+      defaultValue: 0.7, 
+      min: 0.0, 
+      max: 2.0, 
+      step: 0.1,
+      description: "Controls randomness in generation."
+    }
+  ],
+  llama_index_llm: [
+    { 
+      id: "llm", 
+      name: "LLM Model", 
+      type: "string", 
+      defaultValue: "gpt-3.5-turbo",
+      description: "Model name for LlamaIndex LLM."
+    },
+    { 
+      id: "max_tokens", 
+      name: "Max Tokens", 
+      type: "number", 
+      defaultValue: 256, 
+      min: 1, 
+      max: 4096, 
+      step: 1,
+      description: "Maximum number of tokens to generate."
+    },
+    { 
+      id: "temperature", 
+      name: "Temperature", 
+      type: "number", 
+      defaultValue: 0.7, 
+      min: 0.0, 
+      max: 2.0, 
+      step: 0.1,
+      description: "Controls randomness in generation."
+    }
+  ]
+};
+
 // Library data with descriptions
 const libraries = [
   { 
@@ -56,90 +294,83 @@ const libraries = [
   },
 ];
 
-// Mock saved chat sessions
-const savedChatSessions = [
+// Available RAG Configurations (same as in eval page) - now without generator
+const availableRAGConfigs: RAGConfig[] = [
+  {
+    id: "rag1_basic_autorag",
+    name: "Basic AutoRAG",
+    description: "A simple AutoRAG configuration with basic modules.",
+    parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
+    chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
+    retriever: { moduleId: "bm25", parameterValues: { top_k: 5, bm25_tokenizer: "porter_stemmer" } },
+    // generator removed from RAG config
+    availableMetrics: [],
+  },
+  {
+    id: "rag2_vector_autorag",
+    name: "Vector AutoRAG",
+    description: "AutoRAG configuration using vector database retrieval.",
+    parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
+    chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
+    retriever: { moduleId: "vectordb", parameterValues: { top_k: 3, vectordb: "chroma", embedding_model: "OpenAI Embedding API", embedding_batch: 128, similarity_metric: "cosine" } },
+    // generator removed from RAG config
+    availableMetrics: [],
+  },
+  {
+    id: "rag3_hybrid_autorag",
+    name: "Hybrid AutoRAG",
+    description: "AutoRAG configuration using hybrid retrieval with RRF.",
+    parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
+    chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
+    retriever: { moduleId: "hybrid_rrf", parameterValues: { top_k: 10, weight: 0.6 } },
+    // generator removed from RAG config
+    availableMetrics: [],
+  },
+];
+
+// Chat session interface - now includes generator config
+interface ChatSession {
+  id: string;
+  name: string;
+  timestamp: string;
+  library: string;
+  ragConfigId: string;
+  generatorConfig: ChatGeneratorConfig; // Add generator config to chat session
+}
+
+// Mock saved chat sessions using RAG configs - now as initial data
+const initialChatSessions: ChatSession[] = [
   { 
     id: "session-1", 
     name: "General Chat",
     timestamp: "Today, 10:30 AM",
-    config: {
-      library: "tech-docs",
-      parser: "pypdf",
-      retriever: "chroma_db",
-      generator: "openai_llm",
-      model: "gpt-4o",
-    }
+    library: "tech-docs",
+    ragConfigId: "rag1_basic_autorag",
+    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
   },
   { 
     id: "session-2", 
     name: "Project Research",
     timestamp: "Yesterday, 3:45 PM",
-    config: {
-      library: "research-papers",
-      parser: "markdown_parser",
-      retriever: "bm25",
-      generator: "another_llm",
-      model: "model_x",
-    }
+    library: "research-papers",
+    ragConfigId: "rag2_vector_autorag",
+    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o", max_tokens: 512, temperature: 0.5, top_p: 0.9 } },
   },
   { 
     id: "session-3", 
     name: "Meeting Notes",
     timestamp: "Aug 15, 2:15 PM",
-    config: {
-      library: "company-wiki",
-      parser: "markdown_parser",
-      retriever: "chroma_db",
-      generator: "openai_llm",
-      model: "gpt-4o-mini",
-    }
+    library: "company-wiki",
+    ragConfigId: "rag3_hybrid_autorag",
+    generatorConfig: { moduleId: "vllm", parameterValues: { llm: "meta-llama/Llama-2-7b-chat-hf", max_tokens: 1024, temperature: 0.8 } },
   },
   { 
     id: "session-4", 
     name: "Technical Docs",
     timestamp: "Aug 14, 11:20 AM",
-    config: {
-      library: "product-manuals",
-      parser: "pypdf",
-      retriever: "bm25",
-      generator: "openai_llm",
-      model: "gpt-4o",
-    }
-  },
-];
-
-// Config data (mock)
-const parsers = [
-  { id: "pypdf", name: "PyPDF" },
-  { id: "markdown_parser", name: "Markdown Parser" },
-];
-
-const retrievers = [
-  { id: "chroma_db", name: "ChromaDB" },
-  { id: "bm25", name: "BM25" },
-];
-
-const generators = [
-  {
-    id: "openai_llm",
-    name: "OpenAI LLM",
-    models: [
-      { id: "gpt-4o-mini", name: "gpt-4o mini" },
-      { id: "gpt-4o", name: "gpt-4o" },
-    ],
-    parameters: [
-      { id: "max_tokens", name: "Max Tokens", type: "number", min: 1, max: 2048, step: 1, defaultValue: 1024 },
-      { id: "temperature", name: "Temperature", type: "number", min: 0, max: 2, step: 0.1, defaultValue: 0.7 },
-      { id: "top_p", name: "Top P", type: "number", min: 0, max: 1, step: 0.01, defaultValue: 1 },
-    ],
-  },
-  {
-    id: "another_llm",
-    name: "Another LLM",
-    models: [{ id: "model_x", name: "Model X" }],
-    parameters: [
-      { id: "max_tokens", name: "Max Tokens", type: "number", min: 1, max: 2048, step: 1, defaultValue: 1024 },
-    ],
+    library: "product-manuals",
+    ragConfigId: "rag1_basic_autorag",
+    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
   },
 ];
 
@@ -195,57 +426,52 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
-  // Track the currently selected chat session
+  // Chat sessions state management
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(initialChatSessions);
+  
+  // Track the currently selected chat session and RAG config
   const [selectedSessionId, setSelectedSessionId] = useState<string>("session-1");
+  const [selectedRAGConfigId, setSelectedRAGConfigId] = useState<string>(availableRAGConfigs[0]?.id || "");
+
+  // Generator parameter overrides for current session
+  const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({});
+
+  // Apply animation state
+  const [isApplying, setIsApplying] = useState(false);
 
   // New chat session dialog states
   const [isNewChatPopoverOpen, setIsNewChatPopoverOpen] = useState(false);
   const [isNewSessionDialogOpen, setIsNewSessionDialogOpen] = useState(false);
   const [isExistingSessionDialogOpen, setIsExistingSessionDialogOpen] = useState(false);
   const [tempLibrary, setTempLibrary] = useState(libraries[0].id);
-  const [tempParser, setTempParser] = useState(parsers[0]?.id);
-  const [tempRetriever, setTempRetriever] = useState(retrievers[0]?.id);
+  const [tempRAGConfigId, setTempRAGConfigId] = useState(availableRAGConfigs[0]?.id || "");
+  const [tempSessionName, setTempSessionName] = useState("");
 
-  // New config states
-  const [selectedParser, setSelectedParser] = useState<string | undefined>(parsers[0]?.id);
-  const [selectedRetriever, setSelectedRetriever] = useState<string | undefined>(retrievers[0]?.id);
-  const [selectedGenerator, setSelectedGenerator] = useState<string | undefined>(generators[0]?.id);
-  const [selectedModel, setSelectedModel] = useState<string | undefined>(
-    generators.find(g => g.id === generators[0]?.id)?.models[0]?.id
-  );
-  const [modelParams, setModelParams] = useState<Record<string, any>>({});
+  // Delete confirmation dialog state
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  // For config "Set" loading animation
-  const [isSetting, setIsSetting] = useState(false);
-
-  // Effect to initialize modelParams when generator changes
+  // Initialize generator params when session changes (now from session's generator config)
   useEffect(() => {
-    const currentGenerator = generators.find(g => g.id === selectedGenerator);
-    if (currentGenerator) {
-      const initialParams: Record<string, any> = {};
-      currentGenerator.parameters.forEach(param => {
-        initialParams[param.id] = param.defaultValue;
-      });
-      setModelParams(initialParams);
-      // Also set the default model for the new generator
-      setSelectedModel(currentGenerator.models[0]?.id);
+    if (selectedSessionId) {
+      const session = chatSessions.find(s => s.id === selectedSessionId);
+      if (session && session.generatorConfig) {
+        setGeneratorParams({...session.generatorConfig.parameterValues});
+      }
     } else {
-      setModelParams({});
-      setSelectedModel(undefined);
+      // Default generator params when no session is selected
+      setGeneratorParams({ llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 });
     }
-  }, [selectedGenerator]);
-  
+  }, [selectedSessionId, chatSessions]);
+
   // Load initial session data on first render
   useEffect(() => {
     if (selectedSessionId) {
-      const session = savedChatSessions.find(s => s.id === selectedSessionId);
+      const session = chatSessions.find(s => s.id === selectedSessionId);
       if (session) {
         // Set configuration based on the selected session
-        setSelectedLibrary(session.config.library);
-        setSelectedParser(session.config.parser);
-        setSelectedRetriever(session.config.retriever);
-        setSelectedGenerator(session.config.generator);
-        setSelectedModel(session.config.model);
+        setSelectedLibrary(session.library);
+        setSelectedRAGConfigId(session.ragConfigId);
         
         // Set initial message
         setMessages([{
@@ -260,7 +486,23 @@ export default function ChatPage() {
   
   // Get the full description of the selected library
   const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
-  const currentGeneratorDetails = generators.find(g => g.id === selectedGenerator);
+
+  // Get current RAG config details
+  const currentRAGConfig = availableRAGConfigs.find(c => c.id === selectedRAGConfigId);
+
+  // Handle generator parameter changes
+  const handleGeneratorParamChange = (paramId: string, value: string | number | boolean) => {
+    setGeneratorParams(prev => ({ ...prev, [paramId]: value }));
+  };
+
+  // Handle apply settings
+  const handleApplySettings = () => {
+    setIsApplying(true);
+    // Simulate applying settings with a delay
+    setTimeout(() => {
+      setIsApplying(false);
+    }, 2000);
+  };
 
   const handleSendMessage = async () => {
     if (inputValue.trim() === "" || isLoading) return;
@@ -282,11 +524,8 @@ export default function ChatPage() {
         result_column: "generated_texts", // This might need to be dynamic or removed if backend handles it
         config: {
           library_id: selectedLibrary,
-          parser: selectedParser,
-          retriever: selectedRetriever,
-          generator: selectedGenerator,
-          model: selectedModel,
-          parameters: modelParams,
+          ragConfigId: selectedRAGConfigId,
+          generatorParams: generatorParams, // Include current generator parameters
         }
       };
       console.log("Sending to API:", apiPayload); // For debugging
@@ -330,16 +569,35 @@ export default function ChatPage() {
     }
   };
 
-  const handleParamChange = (paramId: string, value: any) => {
-    setModelParams(prev => ({ ...prev, [paramId]: value }));
-  };
-
   // Create a new chat session with the selected configuration
   const createNewChatSession = () => {
+    // Generate new session ID and timestamp
+    const newSessionId = `session-${Date.now()}`;
+    const timestamp = new Date().toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    // Create new session object
+    const newSession: ChatSession = {
+      id: newSessionId,
+      name: tempSessionName.trim() || "New Chat Session",
+      timestamp: timestamp,
+      library: tempLibrary,
+      ragConfigId: tempRAGConfigId,
+      generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
+    };
+
+    // Add to sessions list
+    setChatSessions(prev => [newSession, ...prev]);
+
     // Update main configuration with temporary selections
     setSelectedLibrary(tempLibrary);
-    setSelectedParser(tempParser);
-    setSelectedRetriever(tempRetriever);
+    setSelectedRAGConfigId(tempRAGConfigId);
+    setSelectedSessionId(newSessionId);
     
     // Reset chat messages to initial greeting
     setMessages([{
@@ -349,25 +607,57 @@ export default function ChatPage() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }]);
     
-    // Clear selected session (no session is selected when creating a new custom one)
-    setSelectedSessionId("");
+    // Reset temporary form values
+    setTempSessionName("");
     
     // Close dialogs
     setIsNewSessionDialogOpen(false);
     setIsNewChatPopoverOpen(false);
   };
 
+  // Delete a chat session
+  const deleteSession = (sessionId: string) => {
+    setChatSessions(prev => prev.filter(session => session.id !== sessionId));
+    
+    // If we're deleting the currently selected session, switch to the first available session
+    if (selectedSessionId === sessionId) {
+      const remainingSessions = chatSessions.filter(session => session.id !== sessionId);
+      if (remainingSessions.length > 0) {
+        loadExistingSession(remainingSessions[0].id);
+      } else {
+        // No sessions left, create a default state
+        setSelectedSessionId("");
+        setSelectedLibrary(libraries[0].id);
+        setSelectedRAGConfigId(availableRAGConfigs[0]?.id || "");
+        setMessages([{
+          id: "initial-ai-message-empty",
+          isUser: false,
+          content: "Hello! How can I help you today?",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      }
+    }
+    
+    // Close delete dialog
+    setIsDeleteDialogOpen(false);
+    setDeleteSessionId(null);
+  };
+
+  // Handle delete session confirmation
+  const handleDeleteSession = (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent triggering the session selection
+    setDeleteSessionId(sessionId);
+    setIsDeleteDialogOpen(true);
+  };
+
   // Create a chat session from an existing one
   const loadExistingSession = (sessionId: string) => {
-    const session = savedChatSessions.find(s => s.id === sessionId);
+    const session = chatSessions.find(s => s.id === sessionId);
     
     if (session) {
       // Set configuration based on the selected session
-      setSelectedLibrary(session.config.library);
-      setSelectedParser(session.config.parser);
-      setSelectedRetriever(session.config.retriever);
-      setSelectedGenerator(session.config.generator);
-      setSelectedModel(session.config.model);
+      setSelectedLibrary(session.library);
+      setSelectedRAGConfigId(session.ragConfigId);
       
       // Reset chat messages to initial greeting
       setMessages([{
@@ -386,418 +676,573 @@ export default function ChatPage() {
     }
   };
 
-  // Spinner animation for setting
-  function SettingLoadingSpinner() {
-    // Simple three-dot animation using CSS
-    return (
-      <div className="flex flex-col items-center justify-center">
-        <div className="flex space-x-1">
-          <span className="animate-bounce [animation-delay:0ms] text-2xl">.</span>
-          <span className="animate-bounce [animation-delay:200ms] text-2xl">.</span>
-          <span className="animate-bounce [animation-delay:400ms] text-2xl">.</span>
-        </div>
-        <div className="mt-2 text-base font-medium">Applying Settings...</div>
-      </div>
-    );
-  }
-  
+  // Create a copy from an existing session
+  const createCopyFromExistingSession = (sessionId: string) => {
+    const session = chatSessions.find(s => s.id === sessionId);
+    
+    if (session) {
+      // Generate new session ID and timestamp
+      const newSessionId = `session-${Date.now()}`;
+      const timestamp = new Date().toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+
+      // Create new session object with "copy" suffix, copying all original configs
+      const newSession: ChatSession = {
+        id: newSessionId,
+        name: `${session.name} copy`,
+        timestamp: timestamp,
+        library: session.library,
+        ragConfigId: session.ragConfigId,
+        generatorConfig: { 
+          moduleId: session.generatorConfig.moduleId, 
+          parameterValues: { ...session.generatorConfig.parameterValues } 
+        },
+      };
+
+      // Add to sessions list
+      setChatSessions(prev => [newSession, ...prev]);
+
+      // Set configuration based on the copied session
+      setSelectedLibrary(session.library);
+      setSelectedRAGConfigId(session.ragConfigId);
+      setSelectedSessionId(newSessionId);
+      
+      // Reset chat messages to initial greeting
+      setMessages([{
+        id: "initial-ai-message-copy",
+        isUser: false,
+        content: `Hello! I've created a copy of "${session.name}". How can I help you today?`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      
+      // Close dialog
+      setIsExistingSessionDialogOpen(false);
+      setIsNewChatPopoverOpen(false);
+    }
+  };
+
   return (
-    <PageLayout>
-      <div className="flex h-[calc(100vh-5rem)]">
-        {/* Left Sidebar - Chat Sessions */}
-        <aside className="hidden md:flex w-64 flex-col border-r overflow-y-auto">
-          {/* Header with New Chat button */}
-          <div className="flex justify-between items-center p-4 border-b font-heading">
-            <h2 className="font-semibold text-lg">Chat Sessions</h2>
-            <Popover open={isNewChatPopoverOpen} onOpenChange={setIsNewChatPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" title="New Chat">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 5v14M5 12h14"/>
-                  </svg>
-                  <span className="sr-only">New Chat</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-0">
-                <div className="py-2">
-                  <button 
-                    className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
-                    onClick={() => {
-                      setIsNewSessionDialogOpen(true);
-                      setTempLibrary(selectedLibrary);
-                      setTempParser(selectedParser || "");
-                      setTempRetriever(selectedRetriever || "");
-                    }}
-                  >
-                    <div className="flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                        <path d="M12 5v14M5 12h14"/>
-                      </svg>
-                      Create new custom session
-                    </div>
-                  </button>
-                  <button 
-                    className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
-                    onClick={() => {
-                      setIsExistingSessionDialogOpen(true);
-                      setIsNewChatPopoverOpen(false);
-                    }}
-                  >
-                    <div className="flex items-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                        <path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1"/>
-                        <path d="M8 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2"/>
-                        <path d="M8 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
-                        <path d="M15 5h1a2 2 0 0 1 2 2v1"/>
-                        <path d="M22 12h-4"/>
-                        <path d="M18 10l-2 2 2 2"/>
-                      </svg>
-                      From existing session
-                    </div>
-                  </button>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-          
-          {/* Chat list */}
-          <div className="flex flex-col">
-            {savedChatSessions.map((session) => (
-              <div 
-                key={session.id} 
-                className={`p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
-                onClick={() => loadExistingSession(session.id)}
-              >
-                <div className="font-medium">{session.name}</div>
-                <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
-              </div>
-            ))}
-          </div>
-        </aside>
-        
-        {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col relative">
-          {/* Overlay for settings spinner */}
-          {isSetting && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/70 pointer-events-auto">
-              <div>
-                <SettingLoadingSpinner />
-              </div>
+    <>
+      <PageLayout>
+        <div className="flex h-[calc(100vh-5rem)]">
+          {/* Left Sidebar - Chat Sessions */}
+          <aside className="hidden md:flex w-64 flex-col border-r overflow-y-auto">
+            {/* Header with New Chat button */}
+            <div className="flex justify-between items-center p-4 border-b font-heading">
+              <h2 className="font-semibold text-lg">Chat Sessions</h2>
+              <Popover open={isNewChatPopoverOpen} onOpenChange={setIsNewChatPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" title="New Chat">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    <span className="sr-only">New Chat</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0">
+                  <div className="py-2">
+                    <button 
+                      className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => {
+                        setIsNewSessionDialogOpen(true);
+                        setTempLibrary(selectedLibrary);
+                        setTempRAGConfigId(selectedRAGConfigId);
+                        setTempSessionName("");
+                      }}
+                    >
+                      <div className="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                          <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        Create new custom session
+                      </div>
+                    </button>
+                    <button 
+                      className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => {
+                        setIsExistingSessionDialogOpen(true);
+                        setIsNewChatPopoverOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                        </svg>
+                        Create from existing
+                      </div>
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
-          )}
-          <div className="flex-1 p-6 overflow-y-auto">
-            <div className="space-y-2 max-w-4xl mx-auto">
-              {messages.map((msg) => (
-                <ChatMessage
-                  key={msg.id}
-                  isUser={msg.isUser}
-                  content={msg.content}
-                  timestamp={msg.timestamp}
-                  source={msg.source}
-                />
+            
+            {/* Chat list */}
+            <div className="flex flex-col">
+              {chatSessions.map((session) => (
+                <div 
+                  key={session.id} 
+                  className={`group p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
+                  onClick={() => loadExistingSession(session.id)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{session.name}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0 hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      title="Delete session"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18"/>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
+                        <line x1="10" x2="10" y1="11" y2="17"/>
+                        <line x1="14" x2="14" y1="11" y2="17"/>
+                      </svg>
+                      <span className="sr-only">Delete session</span>
+                    </Button>
+                  </div>
+                </div>
               ))}
-               {isLoading && (
-                <ChatMessage
-                  isUser={false}
-                  content="AI Assistant is typing..."
-                  timestamp={new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                />
+              {chatSessions.length === 0 && (
+                <div className="p-4 text-center text-muted-foreground">
+                  <div className="text-sm">No chat sessions yet</div>
+                  <div className="text-xs mt-1">Create your first session to get started</div>
+                </div>
               )}
             </div>
-          </div>
+          </aside>
           
-          {/* Input area */}
-          <div className="border-t p-4">
-            <div className="flex max-w-4xl mx-auto">
-              <Input 
-                type="text" 
-                placeholder="Type your message here..." 
-                className="flex-1 rounded-r-none focus-visible:ring-1 text-black"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                disabled={isLoading}
-              />
-              <Button 
-                className="rounded-l-none text-black"
-                onClick={handleSendMessage} 
-                disabled={isLoading || inputValue.trim() === ""}
-              >
-                {isLoading ? (
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : "Send"}
-              </Button>
+          {/* Main Chat Area */}
+          <div className="flex-1 flex flex-col relative">
+            <div className="flex-1 p-6 overflow-y-auto">
+              <div className="space-y-2 max-w-4xl mx-auto">
+                {messages.map((msg) => (
+                  <ChatMessage
+                    key={msg.id}
+                    isUser={msg.isUser}
+                    content={msg.content}
+                    timestamp={msg.timestamp}
+                    source={msg.source}
+                  />
+                ))}
+                 {isLoading && (
+                  <ChatMessage
+                    isUser={false}
+                    content="AI Assistant is typing..."
+                    timestamp={new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-        
-        {/* Right Sidebar - Config */}
-        <aside className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto space-y-6">
-          {/* Current Session Info */}
-          <div>
-            <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Current Session</h3>
-            <div className="p-3 bg-muted rounded-md">
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs text-muted-foreground">Library</div>
-                  <div className="font-medium">{selectedLibraryData?.name || "None"}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Parser</div>
-                  <div className="font-medium">{parsers.find(p => p.id === selectedParser)?.name || "None"}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Retriever</div>
-                  <div className="font-medium">{retrievers.find(r => r.id === selectedRetriever)?.name || "None"}</div>
-                </div>
+            
+            {/* Input area */}
+            <div className="border-t p-4">
+              <div className="flex max-w-4xl mx-auto">
+                <Input 
+                  type="text" 
+                  placeholder="Type your message here..." 
+                  className="flex-1 rounded-r-none focus-visible:ring-1 text-black"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  disabled={isLoading}
+                />
+                <Button 
+                  className="rounded-l-none text-black"
+                  onClick={handleSendMessage} 
+                  disabled={isLoading || inputValue.trim() === ""}
+                >
+                  {isLoading ? (
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : "Send"}
+                </Button>
               </div>
             </div>
           </div>
           
-          <div>
-            <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Model Settings</h3>
-            <div className="space-y-4 pt-2">
-              <div>
-                <Label className="text-sm text-muted-foreground">Generator</Label>
-                <Select value={selectedGenerator} onValueChange={setSelectedGenerator}>
-                  <SelectTrigger className="w-full mt-1">
-                    <SelectValue placeholder="Select a generator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {generators.map(gen => (
-                      <SelectItem key={gen.id} value={gen.id}>{gen.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {currentGeneratorDetails && (
-                <>
+          {/* Right Sidebar - Config */}
+          <aside className="hidden lg:flex w-72 flex-col border-l p-4 overflow-y-auto space-y-6">
+            {/* Current Session Info */}
+            <div>
+              <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Current Session</h3>
+              <div className="p-3 bg-muted rounded-md">
+                <div className="space-y-3">
                   <div>
-                    <Label className="text-sm text-muted-foreground">Model</Label>
-                    <Select value={selectedModel} onValueChange={setSelectedModel}>
-                      <SelectTrigger className="w-full mt-1">
-                        <SelectValue placeholder="Select a model" />
+                    <div className="text-xs text-muted-foreground">Library</div>
+                    <div className="font-medium">{selectedLibraryData?.name || "None"}</div>
+                    {selectedLibraryData?.description && (
+                      <div className="text-xs text-muted-foreground mt-1">{selectedLibraryData.description}</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">RAG Configuration</div>
+                    <div className="font-medium">{availableRAGConfigs.find(c => c.id === selectedRAGConfigId)?.name || "None"}</div>
+                    {availableRAGConfigs.find(c => c.id === selectedRAGConfigId)?.description && (
+                      <div className="text-xs text-muted-foreground mt-1">{availableRAGConfigs.find(c => c.id === selectedRAGConfigId)?.description}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Generator Parameters */}
+            {selectedSessionId && (
+              <div>
+                <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Generator Settings</h3>
+                <div className="space-y-4">
+                  {(() => {
+                    const currentSession = chatSessions.find(s => s.id === selectedSessionId);
+                    const generatorModuleId = currentSession?.generatorConfig?.moduleId || 'openai_llm';
+                    return GENERATOR_PARAM_DEFINITIONS[generatorModuleId]?.map(param => (
+                      <div key={param.id} className="space-y-1.5">
+                        <Label htmlFor={`generator-${param.id}`} className="text-sm">{param.name}</Label>
+                        {param.description && <p className="text-xs text-muted-foreground -mt-1">{param.description}</p>}
+                        
+                        {param.type === 'string' && (
+                          <Input
+                            id={`generator-${param.id}`}
+                            type="text"
+                            value={generatorParams[param.id] as string || ''}
+                            onChange={(e) => handleGeneratorParamChange(param.id, e.target.value)}
+                            placeholder={param.defaultValue as string}
+                          />
+                        )}
+                        
+                        {param.type === 'number' && (
+                          <>
+                            {(param.id === 'temperature' || param.id === 'top_p') ? (
+                              // Use simple range slider for temperature and top_p
+                              <>
+                                <input
+                                  id={`generator-${param.id}`}
+                                  type="range"
+                                  min={param.min}
+                                  max={param.max}
+                                  step={param.step}
+                                  value={generatorParams[param.id] as number ?? param.defaultValue}
+                                  onChange={(e) => handleGeneratorParamChange(param.id, parseFloat(e.target.value))}
+                                  className="w-full mt-1"
+                                />
+                                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                                  <span>{param.min}</span>
+                                  <span>{generatorParams[param.id] ?? param.defaultValue}</span>
+                                  <span>{param.max}</span>
+                                </div>
+                              </>
+                            ) : (
+                              // Use regular number input for other numeric parameters
+                              <Input
+                                id={`generator-${param.id}`}
+                                type="number"
+                                value={generatorParams[param.id] as number ?? ''}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  if (rawValue === '') {
+                                    handleGeneratorParamChange(param.id, '');
+                                  } else {
+                                    const val = parseFloat(rawValue);
+                                    if (!isNaN(val)) {
+                                      handleGeneratorParamChange(param.id, val);
+                                    }
+                                  }
+                                }}
+                                onBlur={(e) => { 
+                                  const rawValue = e.target.value;
+                                  if (rawValue === '' || isNaN(parseFloat(rawValue))) {
+                                    handleGeneratorParamChange(param.id, param.defaultValue as number);
+                                  }
+                                }}
+                                min={param.min}
+                                max={
+                                  // Dynamic max for OpenAI LLM max_tokens based on selected model
+                                  generatorModuleId === 'openai_llm' && param.id === 'max_tokens' 
+                                    ? MAX_TOKEN_DICT[generatorParams['llm'] as string] || param.max
+                                    : param.max
+                                }
+                                step={param.step}
+                                placeholder={String(param.defaultValue)}
+                              />
+                            )}
+                          </>
+                        )}
+                        
+                        {param.type === 'boolean' && (
+                          <div className="flex items-center space-x-2 pt-1">
+                            <input
+                              id={`generator-${param.id}`}
+                              type="checkbox"
+                              checked={generatorParams[param.id] as boolean ?? false}
+                              onChange={(e) => handleGeneratorParamChange(param.id, e.target.checked)}
+                              className="rounded"
+                            />
+                            <Label htmlFor={`generator-${param.id}`} className="text-sm font-normal cursor-pointer">
+                              {generatorParams[param.id] ? "Enabled" : "Disabled"} 
+                            </Label>
+                          </div>
+                        )}
+                        
+                        {param.type === 'select' && param.options && (
+                          <Select
+                            value={generatorParams[param.id] as string || ''}
+                            onValueChange={(value) => handleGeneratorParamChange(param.id, value)}
+                          >
+                            <SelectTrigger id={`generator-${param.id}`}>
+                              <SelectValue placeholder={`Select ${param.name}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {param.options.map(option => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ));
+                  })()}
+                </div>
+                
+                {/* Action buttons at the bottom */}
+                <div className="flex justify-between items-center mt-6 pt-4 border-t">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      const currentSession = chatSessions.find(s => s.id === selectedSessionId);
+                      if (currentSession && currentSession.generatorConfig) {
+                        setGeneratorParams({...currentSession.generatorConfig.parameterValues});
+                      }
+                    }}
+                    disabled={isApplying}
+                    className="text-xs"
+                  >
+                    Reset
+                  </Button>
+                  <Button 
+                    size="sm"
+                    onClick={handleApplySettings}
+                    disabled={isApplying}
+                    className="text-xs"
+                  >
+                    {isApplying ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Applying...
+                      </>
+                    ) : (
+                      "Apply"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </aside>
+          
+          {/* Existing Session Dialog */}
+          <Dialog open={isExistingSessionDialogOpen} onOpenChange={setIsExistingSessionDialogOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Create from Existing Session</DialogTitle>
+                <DialogDescription>
+                  Select a session to copy. A new session with the same configuration will be created with " copy" added to the name.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {chatSessions.map((session) => (
+                    <div 
+                      key={session.id} 
+                      className="p-4 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-md mb-2"
+                      onClick={() => createCopyFromExistingSession(session.id)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="font-medium">{session.name}</div>
+                          <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
+                        </div>
+                        <div className="text-xs text-muted-foreground ml-2 flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                          </svg>
+                          Copy
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <Badge variant="outline" className="text-xs">
+                          Library: {libraries.find(l => l.id === session.library)?.name || session.library}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          RAG Configuration: {availableRAGConfigs.find(c => c.id === session.ragConfigId)?.name || session.ragConfigId}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsExistingSessionDialogOpen(false)}>
+                  Cancel
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          
+          {/* New Chat Session Dialog */}
+          <Dialog open={isNewSessionDialogOpen} onOpenChange={setIsNewSessionDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create New Chat Session</DialogTitle>
+                <DialogDescription>
+                  Configure the settings for your new chat session.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="session-name" className="text-right">
+                    Name
+                  </Label>
+                  <div className="col-span-3">
+                    <Input
+                      id="session-name"
+                      value={tempSessionName}
+                      onChange={(e) => setTempSessionName(e.target.value)}
+                      placeholder="Enter session name (optional)"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="new-library" className="text-right">
+                    Library
+                  </Label>
+                  <div className="col-span-3">
+                    <Select value={tempLibrary} onValueChange={setTempLibrary}>
+                      <SelectTrigger id="new-library">
+                        <SelectValue placeholder="Select a library" />
                       </SelectTrigger>
                       <SelectContent>
-                        {currentGeneratorDetails.models.map(model => (
-                          <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                        {libraries.map(lib => (
+                          <SelectItem key={lib.id} value={lib.id}>
+                            {lib.name}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  {currentGeneratorDetails.parameters.map(param => (
-                    <div key={param.id}>
-                      <Label htmlFor={param.id} className="text-sm text-muted-foreground">{param.name}</Label>
-                      {param.type === 'number' && (param.id === 'temperature' || param.id === 'top_p') ? (
-                        <>
-                          <input
-                            id={param.id}
-                            type="range"
-                            min={param.min}
-                            max={param.max}
-                            step={param.step}
-                            value={modelParams[param.id] ?? param.defaultValue}
-                            onChange={(e) => handleParamChange(param.id, parseFloat(e.target.value))}
-                            className="w-full mt-1"
-                          />
-                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                            <span>{param.min}</span>
-                            <span>{modelParams[param.id]}</span>
-                            <span>{param.max}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <Input
-                            id={param.id}
-                            type={param.type}
-                            min={param.min}
-                            max={param.max}
-                            step={param.step}
-                            value={modelParams[param.id] ?? param.defaultValue}
-                            onChange={(e) => handleParamChange(param.id, param.type === 'number' ? parseFloat(e.target.value) : e.target.value)}
-                            className="w-full mt-1"
-                          />
-                          {param.type === 'number' && (
-                            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                              <span>Min: {param.min}</span>
-                              <span>Max: {param.max}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-            {/* Set button at the bottom of the config area */}
-            <div className="pt-8 flex justify-end">
-              <Button
-                onClick={() => {
-                  setIsSetting(true);
-                  setTimeout(() => setIsSetting(false), 1500);
-                }}
-                disabled={isSetting}
-                className="w-24"
-              >{isSetting ? (
-                <span>
-                  <svg className="inline animate-spin mr-1 h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="new-rag-config" className="text-right">
+                    Configuration
+                  </Label>
+                  <div className="col-span-3">
+                    <Select value={tempRAGConfigId} onValueChange={setTempRAGConfigId}>
+                      <SelectTrigger id="new-rag-config">
+                        <SelectValue placeholder="Select a RAG configuration" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableRAGConfigs.map(config => (
+                          <SelectItem key={config.id} value={config.id}>
+                            {config.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setIsNewSessionDialogOpen(false);
+                    setTempSessionName("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={createNewChatSession}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M12 5v14M5 12h14"/>
                   </svg>
-                  Setting...
-                </span>
-              ) : "Apply"}
-              </Button>
-            </div>
-          </div>
-        </aside>
-        
-        {/* Existing Session Dialog */}
-        <Dialog open={isExistingSessionDialogOpen} onOpenChange={setIsExistingSessionDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Load Existing Chat Session</DialogTitle>
-              <DialogDescription>
-                Select a previously configured chat session to continue.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <div className="max-h-[60vh] overflow-y-auto">
-                {savedChatSessions.map((session) => (
-                  <div 
-                    key={session.id} 
-                    className="p-4 cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-md mb-2"
-                    onClick={() => loadExistingSession(session.id)}
-                  >
-                    <div className="flex justify-between">
-                      <div className="font-medium">{session.name}</div>
-                      <div className="text-xs text-muted-foreground">{session.timestamp}</div>
+                  Create Chat
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Session Confirmation Dialog */}
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Delete Chat Session</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete this chat session? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                {deleteSessionId && (
+                  <div className="p-4 bg-muted rounded-md">
+                    <div className="font-medium">
+                      {chatSessions.find(s => s.id === deleteSessionId)?.name}
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <Badge variant="outline" className="text-xs">
-                        Library: {libraries.find(l => l.id === session.config.library)?.name || session.config.library}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        Parser: {parsers.find(p => p.id === session.config.parser)?.name || session.config.parser}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        Retriever: {retrievers.find(r => r.id === session.config.retriever)?.name || session.config.retriever}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        Generator: {generators.find(g => g.id === session.config.generator)?.name || session.config.generator}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        Model: {session.config.model}
-                      </Badge>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      {chatSessions.find(s => s.id === deleteSessionId)?.timestamp}
                     </div>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsExistingSessionDialogOpen(false)}>
-                Cancel
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        
-        {/* New Chat Session Dialog */}
-        <Dialog open={isNewSessionDialogOpen} onOpenChange={setIsNewSessionDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Create New Chat Session</DialogTitle>
-              <DialogDescription>
-                Configure the settings for your new chat session.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="new-library" className="text-right">
-                  Library
-                </Label>
-                <div className="col-span-3">
-                  <Select value={tempLibrary} onValueChange={setTempLibrary}>
-                    <SelectTrigger id="new-library">
-                      <SelectValue placeholder="Select a library" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {libraries.map(lib => (
-                        <SelectItem key={lib.id} value={lib.id}>
-                          {lib.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="new-parser" className="text-right">
-                  Parser
-                </Label>
-                <div className="col-span-3">
-                  <Select value={tempParser} onValueChange={setTempParser}>
-                    <SelectTrigger id="new-parser">
-                      <SelectValue placeholder="Select a parser" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {parsers.map(parser => (
-                        <SelectItem key={parser.id} value={parser.id}>
-                          {parser.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="new-retriever" className="text-right">
-                  Retriever
-                </Label>
-                <div className="col-span-3">
-                  <Select value={tempRetriever} onValueChange={setTempRetriever}>
-                    <SelectTrigger id="new-retriever">
-                      <SelectValue placeholder="Select a retriever" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {retrievers.map(retriever => (
-                        <SelectItem key={retriever.id} value={retriever.id}>
-                          {retriever.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button 
-                variant="outline" 
-                onClick={() => setIsNewSessionDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={createNewChatSession}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                  <path d="M12 5v14M5 12h14"/>
-                </svg>
-                Create Chat
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </PageLayout>
+              <DialogFooter>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setIsDeleteDialogOpen(false);
+                    setDeleteSessionId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive"
+                  onClick={() => deleteSessionId && deleteSession(deleteSessionId)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
+                    <line x1="10" x2="10" y1="11" y2="17"/>
+                    <line x1="14" x2="14" y1="11" y2="17"/>
+                  </svg>
+                  Delete Session
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </PageLayout>
+    </>
   );
 } 
