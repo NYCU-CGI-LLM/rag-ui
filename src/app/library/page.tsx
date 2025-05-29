@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from "react";
+// Base URL for backend API
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 import { PageLayout } from "@/components/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,10 +32,14 @@ import { Trash2 } from 'lucide-react';
 // Define types
 interface Library {
   id: string;
-  name: string;
+  library_name: string;
   description: string;
-  fileCount: number;
-  lastUpdated: string;
+  stats: {
+    file_count: number;
+    total_size: number;
+  };
+  created_at: string;
+  updated_at: string;
 }
 
 interface Document {
@@ -53,54 +59,24 @@ export default function LibraryPage() {
   const [selectedDocuments, setSelectedDocuments] = useState<number[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState("");
+  const [editedLibraryName, setEditedLibraryName] = useState("");
   const [isDeleteLibraryDialogOpen, setIsDeleteLibraryDialogOpen] = useState(false);
 
-  // Initialize with demo data
+  // Fetch libraries from backend API
   useEffect(() => {
-    // Load demo libraries
-    const demoLibraries: Library[] = [
-      {
-        id: "1",
-        name: "Technical Documentation",
-        description: "Technical manuals and API documentation",
-        fileCount: 23,
-        lastUpdated: "2023-11-15"
-      },
-      {
-        id: "2",
-        name: "Research Papers",
-        description: "Academic papers and research notes",
-        fileCount: 45,
-        lastUpdated: "2023-12-03"
-      },
-      {
-        id: "3",
-        name: "Product Manuals",
-        description: "User guides and product specifications",
-        fileCount: 17,
-        lastUpdated: "2024-01-20"
-      },
-      {
-        id: "4",
-        name: "Company Wiki",
-        description: "Internal knowledge base and processes",
-        fileCount: 31,
-        lastUpdated: "2024-02-10"
+    const fetchLibraries = async () => {
+      try {
+        const response = await fetch(`${API_URL}/library/`);
+        if (!response.ok) throw new Error("Failed to fetch libraries");
+        const text = await response.text();
+        console.log("Library API raw:", text);
+        const data = JSON.parse(text);
+        setLibraries(data);
+      } catch (error) {
+        console.error("Error loading libraries:", error);
       }
-    ];
-    
-    // Load demo documents
-    const demoDocuments = [
-      { id: 1, name: "system_architecture.pdf", size: "2.4 MB", uploadDate: "2024-01-05" },
-      { id: 2, name: "api_reference.docx", size: "1.7 MB", uploadDate: "2024-01-10" },
-      { id: 3, name: "installation_guide.pdf", size: "3.2 MB", uploadDate: "2024-01-12" },
-      { id: 4, name: "troubleshooting.md", size: "0.5 MB", uploadDate: "2024-01-15" },
-      { id: 5, name: "security_protocols.pdf", size: "1.8 MB", uploadDate: "2024-01-20" }
-    ];
-    
-    setLibraries(demoLibraries);
-    setDocuments(demoDocuments);
+    };
+    fetchLibraries();
   }, []);
 
   const handleCreateLibrary = () => {
@@ -113,43 +89,69 @@ export default function LibraryPage() {
       return;
     }
 
-    const newLibrary: Library = {
-      id: String(libraries.length + 1),
-      name: newLibraryName,
-      description: newLibraryDescription,
-      fileCount: 0,
-      lastUpdated: new Date().toISOString().split('T')[0]
+    const newLibraryData = {
+      library_name: newLibraryName.trim(),
+      description: newLibraryDescription.trim(),
     };
 
-    setLibraries((prev) => [...prev, newLibrary]);
-    setNewLibraryName("");
-    setNewLibraryDescription("");
-    setIsCreatingLibrary(false);
+    try {
+      console.log("Simulating create library with:", newLibraryData);
+      const createdLibrary: Library = {
+        id: `local_${Date.now()}`,
+        library_name: newLibraryData.library_name,
+        description: newLibraryData.description,
+        stats: { file_count: 0, total_size: 0 },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setLibraries((prev) => [...prev, createdLibrary]);
+      setNewLibraryName("");
+      setNewLibraryDescription("");
+      setIsCreatingLibrary(false);
+    } catch (error) {
+      console.error("Error creating library:", error);
+      alert("Failed to create library. See console for details.");
+    }
   };
 
-  const handleSelectLibrary = (library: Library) => {
+  const handleSelectLibrary = async (library: Library) => {
     setCurrentLibrary(library);
     setSelectedDocuments([]);
+    try {
+      const response = await fetch(`${API_URL}/library/${library.id}/files`);
+      if (!response.ok) throw new Error("Failed to fetch files");
+      const text = await response.text();
+      console.log("Files API raw:", text);
+      const data = JSON.parse(text);
+      setDocuments(data);
+    } catch (error) {
+      console.error("Error loading files:", error);
+    }
   };
 
   const handleBackToLibraries = () => {
     setCurrentLibrary(null);
     setSelectedDocuments([]);
+    setIsEditingName(false);
+    setEditedLibraryName("");
   };
 
   const handleDuplicateLibrary = () => {
     if (currentLibrary) {
-      const duplicateLibrary: Library = {
-        id: String(libraries.length + 1),
-        name: `${currentLibrary.name} copy`,
+      const duplicateLibraryData = {
+        library_name: `${currentLibrary.library_name} copy`,
         description: currentLibrary.description,
-        fileCount: currentLibrary.fileCount,
-        lastUpdated: new Date().toISOString().split('T')[0]
       };
-      
-      setLibraries((prev) => [...prev, duplicateLibrary]);
-      
-      // Navigate back to the Document Libraries page
+      console.log("Simulating duplicate library for:", currentLibrary.id, "with data:", duplicateLibraryData);
+      const newDuplicatedLibrary: Library = {
+        id: `local_dup_${Date.now()}`,
+        library_name: duplicateLibraryData.library_name,
+        description: duplicateLibraryData.description,
+        stats: { ...currentLibrary.stats },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setLibraries((prev) => [...prev, newDuplicatedLibrary]);
       setCurrentLibrary(null);
       setSelectedDocuments([]);
     }
@@ -176,8 +178,9 @@ export default function LibraryPage() {
       prevDocs.filter((doc) => !selectedDocuments.includes(doc.id))
     );
     if (currentLibrary) {
-        const newFileCount = currentLibrary.fileCount - selectedDocuments.length;
-        const updatedLibrary = { ...currentLibrary, fileCount: newFileCount > 0 ? newFileCount : 0 };
+        const newFileCount = currentLibrary.stats.file_count - selectedDocuments.length;
+        const updatedStats = { ...currentLibrary.stats, file_count: newFileCount > 0 ? newFileCount : 0 };
+        const updatedLibrary = { ...currentLibrary, stats: updatedStats, updated_at: new Date().toISOString() };
         setCurrentLibrary(updatedLibrary);
         setLibraries(prevLibs => prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib));
     }
@@ -186,8 +189,17 @@ export default function LibraryPage() {
   };
 
   const handleRenameLibrary = () => {
-    if (currentLibrary && editedName.trim() !== "") {
-      const updatedLibrary = { ...currentLibrary, name: editedName.trim() };
+    if (currentLibrary && editedLibraryName.trim() !== "") {
+      const updatedLibraryData = {
+        library_name: editedLibraryName.trim(),
+        description: currentLibrary.description,
+      };
+      console.log("Simulating rename library:", currentLibrary.id, "to:", updatedLibraryData.library_name);
+      const updatedLibrary = { 
+        ...currentLibrary, 
+        library_name: updatedLibraryData.library_name,
+        updated_at: new Date().toISOString()
+      };
       setCurrentLibrary(updatedLibrary);
       setLibraries(prev => prev.map(lib => 
         lib.id === updatedLibrary.id ? updatedLibrary : lib
@@ -198,7 +210,7 @@ export default function LibraryPage() {
 
   const startEditingName = () => {
     if (currentLibrary) {
-      setEditedName(currentLibrary.name);
+      setEditedLibraryName(currentLibrary.library_name);
       setIsEditingName(true);
     }
   };
@@ -237,8 +249,8 @@ export default function LibraryPage() {
                   {isEditingName ? (
                     <div className="flex items-center">
                       <Input 
-                        value={editedName}
-                        onChange={(e) => setEditedName(e.target.value)}
+                        value={editedLibraryName}
+                        onChange={(e) => setEditedLibraryName(e.target.value)}
                         className="text-2xl font-bold h-auto py-1 mr-2"
                         autoFocus
                         onKeyDown={(e) => {
@@ -268,7 +280,7 @@ export default function LibraryPage() {
                     </div>
                   ) : (
                     <>
-                      <h1 className="text-2xl font-bold">{currentLibrary.name}</h1>
+                      <h1 className="text-2xl font-bold">{currentLibrary.library_name}</h1>
                       <Button 
                         variant="ghost" 
                         size="sm" 
@@ -386,7 +398,7 @@ export default function LibraryPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {libraries
                 .slice()
-                .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
+                .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
                 .map((library) => (
                 <Card 
                   key={library.id} 
@@ -395,13 +407,13 @@ export default function LibraryPage() {
                 >
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
-                      <CardTitle>{library.name}</CardTitle>
+                      <CardTitle>{library.library_name}</CardTitle>
                     </div>
                     <CardDescription>{library.description}</CardDescription>
                   </CardHeader>
                   <CardFooter className="flex justify-between pt-2 text-sm">
-                    <span>{library.fileCount} files</span>
-                    <span>Updated: {library.lastUpdated}</span>
+                    <span>Files: {library.stats.file_count}</span>
+                    <span>Updated: {new Date(library.updated_at).toLocaleDateString()}</span>
                   </CardFooter>
                 </Card>
               ))}
@@ -465,7 +477,8 @@ export default function LibraryPage() {
             <DialogHeader>
               <DialogTitle>Delete Library</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete "{currentLibrary?.name}"? This action cannot be undone.
+                Are you sure you want to delete the library "{currentLibrary?.library_name}"? 
+                This action cannot be undone and all associated documents may be lost.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex justify-between mt-6 gap-4">
