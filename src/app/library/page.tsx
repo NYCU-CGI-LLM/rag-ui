@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+// Base URL for backend API
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 import { PageLayout } from "@/components/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,17 +32,22 @@ import { Trash2 } from 'lucide-react';
 // Define types
 interface Library {
   id: string;
-  name: string;
+  library_name: string;
   description: string;
-  fileCount: number;
-  lastUpdated: string;
+  stats: {
+    file_count: number;
+    total_size: number;
+  };
+  created_at: string;
+  updated_at: string;
 }
 
 interface Document {
-  id: number;
-  name: string;
-  size: string;
-  uploadDate: string;
+  id: string;
+  file_name: string;
+  size_bytes: number;
+  uploaded_at: string;
+  mime_type: string;
 }
 
 export default function LibraryPage() {
@@ -50,112 +57,193 @@ export default function LibraryPage() {
   const [isCreatingLibrary, setIsCreatingLibrary] = useState(false);
   const [newLibraryName, setNewLibraryName] = useState("");
   const [newLibraryDescription, setNewLibraryDescription] = useState("");
-  const [selectedDocuments, setSelectedDocuments] = useState<number[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
-  const [editedName, setEditedName] = useState("");
+  const [editedLibraryName, setEditedLibraryName] = useState("");
   const [isDeleteLibraryDialogOpen, setIsDeleteLibraryDialogOpen] = useState(false);
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dndFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize with demo data
+  const ALLOWED_FILE_TYPES = [
+    "application/pdf", 
+    "application/msword", 
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+    "text/plain", 
+    "text/csv", 
+    "application/json", 
+    "text/markdown"
+  ];
+  const MAX_FILE_SIZE_MB = 100;
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+  // Fetch libraries from backend API
   useEffect(() => {
-    // Load demo libraries
-    const demoLibraries: Library[] = [
-      {
-        id: "1",
-        name: "Technical Documentation",
-        description: "Technical manuals and API documentation",
-        fileCount: 23,
-        lastUpdated: "2023-11-15"
-      },
-      {
-        id: "2",
-        name: "Research Papers",
-        description: "Academic papers and research notes",
-        fileCount: 45,
-        lastUpdated: "2023-12-03"
-      },
-      {
-        id: "3",
-        name: "Product Manuals",
-        description: "User guides and product specifications",
-        fileCount: 17,
-        lastUpdated: "2024-01-20"
-      },
-      {
-        id: "4",
-        name: "Company Wiki",
-        description: "Internal knowledge base and processes",
-        fileCount: 31,
-        lastUpdated: "2024-02-10"
+    const fetchLibraries = async () => {
+      try {
+        const response = await fetch(`${API_URL}/library/`);
+        if (!response.ok) throw new Error("Failed to fetch libraries");
+        const text = await response.text();
+        console.log("Library API raw:", text);
+        const data = JSON.parse(text);
+        setLibraries(data);
+      } catch (error) {
+        console.error("Error loading libraries:", error);
       }
-    ];
-    
-    // Load demo documents
-    const demoDocuments = [
-      { id: 1, name: "system_architecture.pdf", size: "2.4 MB", uploadDate: "2024-01-05" },
-      { id: 2, name: "api_reference.docx", size: "1.7 MB", uploadDate: "2024-01-10" },
-      { id: 3, name: "installation_guide.pdf", size: "3.2 MB", uploadDate: "2024-01-12" },
-      { id: 4, name: "troubleshooting.md", size: "0.5 MB", uploadDate: "2024-01-15" },
-      { id: 5, name: "security_protocols.pdf", size: "1.8 MB", uploadDate: "2024-01-20" }
-    ];
-    
-    setLibraries(demoLibraries);
-    setDocuments(demoDocuments);
+    };
+    fetchLibraries();
   }, []);
+
+  useEffect(() => {
+    console.log("[useEffect on documents change] Current documents:", documents);
+    const ids = documents.map(doc => doc.id);
+    console.log("[useEffect on documents change] Document IDs:", JSON.stringify(ids));
+
+    const undefinedOrNullIds = documents.filter(doc => doc.id === undefined || doc.id === null);
+    if (undefinedOrNullIds.length > 0) {
+      console.warn("[useEffect on documents change] UNDEFINED/NULL IDs FOUND:", undefinedOrNullIds);
+    }
+
+    const idCounts: Record<string, number> = {};
+    ids.forEach(id => {
+      if (id !== undefined && id !== null) { // Only count valid IDs for duplication check
+        idCounts[id] = (idCounts[id] || 0) + 1;
+      }
+    });
+
+    const duplicates = Object.entries(idCounts).filter(([_, count]) => count > 1).map(([id, _]) => id);
+    if (duplicates.length > 0) {
+      console.warn("[useEffect on documents change] DUPLICATE IDs FOUND:", duplicates);
+      console.warn("[useEffect on documents change] Full documents array with duplicates:", 
+        documents.filter(doc => duplicates.includes(doc.id))
+      );
+    }
+  }, [documents]); // This effect runs when 'documents' state changes
 
   const handleCreateLibrary = () => {
     setIsCreatingLibrary(true);
   };
 
-  const handleSaveNewLibrary = () => {
+  const handleSaveNewLibrary = async () => {
     if (!newLibraryName.trim()) {
       alert("Library name is required");
       return;
     }
 
-    const newLibrary: Library = {
-      id: String(libraries.length + 1),
-      name: newLibraryName,
-      description: newLibraryDescription,
-      fileCount: 0,
-      lastUpdated: new Date().toISOString().split('T')[0]
+    const newLibraryData = {
+      library_name: newLibraryName.trim(),
+      description: newLibraryDescription.trim(),
     };
 
-    setLibraries((prev) => [...prev, newLibrary]);
-    setNewLibraryName("");
-    setNewLibraryDescription("");
-    setIsCreatingLibrary(false);
+    try {
+      const response = await fetch(`${API_URL}/library/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "accept": "application/json",
+        },
+        body: JSON.stringify(newLibraryData),
+      });
+
+      if (response.status === 201) {
+        const createdLibrary: Library = await response.json();
+        setLibraries((prev) => [...prev, createdLibrary]);
+        setNewLibraryName("");
+        setNewLibraryDescription("");
+        setIsCreatingLibrary(false);
+      } else {
+        const errorData = await response.json();
+        let errorMessage = `Failed to create library. Status: ${response.status}`;
+        if (response.status === 409) {
+          errorMessage = "Library name already exists. Please choose a different name.";
+        } else if (response.status === 422 && errorData.detail) {
+          const validationErrors = errorData.detail.map((err: any) => `${err.loc.join('.')} - ${err.msg}`).join('\\n');
+          errorMessage = `Validation Error:\\n${validationErrors}`;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        }
+        console.error("Error creating library:", errorData);
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error("Error creating library:", error);
+      alert("An unexpected error occurred while creating the library. See console for details.");
+    }
   };
 
-  const handleSelectLibrary = (library: Library) => {
-    setCurrentLibrary(library);
+  const refreshLibraryDetails = async (libraryId: string) => {
+    if (!libraryId) return;
+    try {
+      console.log(`Refreshing details for library ID: ${libraryId}`);
+      const response = await fetch(`${API_URL}/library/${libraryId}`);
+      if (!response.ok) {
+        let errorText = `Failed to refresh library details (ID: ${libraryId})`;
+        try {
+          const errorData = await response.json();
+          errorText = errorData.detail || errorText;
+        } catch (e) { /* ignore if error response is not JSON */ }
+        throw new Error(errorText);
+      }
+      const detailedLibraryData = await response.json();
+      console.log("Refreshed Detailed Library API raw:", detailedLibraryData);
+
+      setCurrentLibrary(detailedLibraryData);
+      const fetchedFiles = detailedLibraryData.files?.map((file: any) => ({
+        id: file.id,
+        file_name: file.file_name,
+        size_bytes: file.size_bytes,
+        uploaded_at: file.uploaded_at,
+        mime_type: file.mime_type,
+      })) || [];
+      setDocuments(fetchedFiles.filter((file: any) => file.id != null)); 
+
+      // Update this library within the main libraries list as well
+      setLibraries(prevLibs =>
+        prevLibs.map(lib => lib.id === detailedLibraryData.id ? detailedLibraryData : lib)
+      );
+
+    } catch (error) {
+      console.error("Error refreshing library details:", error);
+      alert(`Could not refresh library data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const handleSelectLibrary = async (library: Library) => {
     setSelectedDocuments([]);
+    await refreshLibraryDetails(library.id);
   };
 
   const handleBackToLibraries = () => {
     setCurrentLibrary(null);
     setSelectedDocuments([]);
+    setIsEditingName(false);
+    setEditedLibraryName("");
   };
 
   const handleDuplicateLibrary = () => {
     if (currentLibrary) {
-      const duplicateLibrary: Library = {
-        id: String(libraries.length + 1),
-        name: `${currentLibrary.name} copy`,
+      const duplicateLibraryData = {
+        library_name: `${currentLibrary.library_name} copy`,
         description: currentLibrary.description,
-        fileCount: currentLibrary.fileCount,
-        lastUpdated: new Date().toISOString().split('T')[0]
       };
-      
-      setLibraries((prev) => [...prev, duplicateLibrary]);
-      
-      // Navigate back to the Document Libraries page
+      console.log("Simulating duplicate library for:", currentLibrary.id, "with data:", duplicateLibraryData);
+      const newDuplicatedLibrary: Library = {
+        id: `local_dup_${Date.now()}`,
+        library_name: duplicateLibraryData.library_name,
+        description: duplicateLibraryData.description,
+        stats: { ...currentLibrary.stats },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setLibraries((prev) => [...prev, newDuplicatedLibrary]);
       setCurrentLibrary(null);
       setSelectedDocuments([]);
     }
   };
 
-  const toggleDocumentSelection = (docId: number) => {
+  const toggleDocumentSelection = (docId: string) => {
     setSelectedDocuments((prevSelected) =>
       prevSelected.includes(docId)
         ? prevSelected.filter((id) => id !== docId)
@@ -176,8 +264,9 @@ export default function LibraryPage() {
       prevDocs.filter((doc) => !selectedDocuments.includes(doc.id))
     );
     if (currentLibrary) {
-        const newFileCount = currentLibrary.fileCount - selectedDocuments.length;
-        const updatedLibrary = { ...currentLibrary, fileCount: newFileCount > 0 ? newFileCount : 0 };
+        const newFileCount = currentLibrary.stats.file_count - selectedDocuments.length;
+        const updatedStats = { ...currentLibrary.stats, file_count: newFileCount > 0 ? newFileCount : 0 };
+        const updatedLibrary = { ...currentLibrary, stats: updatedStats, updated_at: new Date().toISOString() };
         setCurrentLibrary(updatedLibrary);
         setLibraries(prevLibs => prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib));
     }
@@ -186,8 +275,17 @@ export default function LibraryPage() {
   };
 
   const handleRenameLibrary = () => {
-    if (currentLibrary && editedName.trim() !== "") {
-      const updatedLibrary = { ...currentLibrary, name: editedName.trim() };
+    if (currentLibrary && editedLibraryName.trim() !== "") {
+      const updatedLibraryData = {
+        library_name: editedLibraryName.trim(),
+        description: currentLibrary.description,
+      };
+      console.log("Simulating rename library:", currentLibrary.id, "to:", updatedLibraryData.library_name);
+      const updatedLibrary = { 
+        ...currentLibrary, 
+        library_name: updatedLibraryData.library_name,
+        updated_at: new Date().toISOString()
+      };
       setCurrentLibrary(updatedLibrary);
       setLibraries(prev => prev.map(lib => 
         lib.id === updatedLibrary.id ? updatedLibrary : lib
@@ -198,7 +296,7 @@ export default function LibraryPage() {
 
   const startEditingName = () => {
     if (currentLibrary) {
-      setEditedName(currentLibrary.name);
+      setEditedLibraryName(currentLibrary.library_name);
       setIsEditingName(true);
     }
   };
@@ -209,6 +307,149 @@ export default function LibraryPage() {
       setCurrentLibrary(null);
       setSelectedDocuments([]);
       setIsDeleteLibraryDialogOpen(false);
+    }
+  };
+
+  const validateFile = (file: File): boolean => {
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      alert(`Invalid file type: ${file.type}. Supported types: PDF, DOC, DOCX, TXT, CSV, JSON, MD`);
+      return false;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      alert(`File is too large (${(file.size / (1024*1024)).toFixed(2)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+      return false;
+    }
+    return true;
+  };
+
+  const executeUpload = async (file: File) => {
+    if (!currentLibrary) {
+      alert("Please ensure a library is selected.");
+      return;
+    }
+    if (!validateFile(file)) {
+      if (dndFileInputRef.current) dndFileInputRef.current.value = "";
+      setFileToUpload(null);
+      return;
+    }
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`${API_URL}/library/${currentLibrary.id}/file`, {
+        method: "POST",
+        body: formData,
+        headers: {
+          "accept": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const newFileData = await response.json();
+        const newDocument: Document = {
+          id: newFileData.id,
+          file_name: newFileData.file_name,
+          size_bytes: newFileData.size_bytes,
+          uploaded_at: newFileData.uploaded_at,
+          mime_type: newFileData.mime_type,
+        };
+        setDocuments((prevDocs) => [...prevDocs, newDocument].filter((file) => file.id != null));
+        if (currentLibrary) {
+          const updatedStats = {
+            file_count: currentLibrary.stats.file_count + 1,
+            total_size: currentLibrary.stats.total_size + newDocument.size_bytes,
+          };
+          const updatedLibrary = { 
+            ...currentLibrary, 
+            stats: updatedStats, 
+            updated_at: new Date().toISOString() 
+          };
+          setCurrentLibrary(updatedLibrary);
+          setLibraries(prevLibs => 
+            prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib)
+          );
+        }
+        alert("File uploaded successfully!");
+        if (currentLibrary) {
+          await refreshLibraryDetails(currentLibrary.id);
+        }
+      } else {
+        let errorMessage = `Upload failed. Status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) {
+             errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+          }
+        } catch (e) {
+          const textError = await response.text();
+          errorMessage = textError || errorMessage;
+        }
+        alert(`Error: ${errorMessage}`);
+        console.error("Error uploading file:", errorMessage);
+      }
+    } catch (error) {
+      alert("An unexpected error occurred during upload. See console.");
+      console.error("Upload error:", error);
+    } finally {
+      setIsUploading(false);
+      setFileToUpload(null);
+      if (dndFileInputRef.current) dndFileInputRef.current.value = "";
+    }
+  };
+
+  const handleMainUploadButtonClick = () => {
+    if (fileToUpload) {
+      executeUpload(fileToUpload);
+    }
+  };
+  
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const relatedTarget = e.relatedTarget as Node;
+    if (!e.currentTarget.contains(relatedTarget)) {
+        setIsDraggingOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (isUploading) return;
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFile = e.dataTransfer.files[0];
+      executeUpload(droppedFile);
+      e.dataTransfer.clearData();
+    }
+  };
+
+  const handleDndCardClick = () => {
+    if (isUploading) return;
+    dndFileInputRef.current?.click();
+  };
+
+  const handleDndCardFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFile = e.target.files[0];
+      executeUpload(selectedFile);
     }
   };
 
@@ -237,8 +478,8 @@ export default function LibraryPage() {
                   {isEditingName ? (
                     <div className="flex items-center">
                       <Input 
-                        value={editedName}
-                        onChange={(e) => setEditedName(e.target.value)}
+                        value={editedLibraryName}
+                        onChange={(e) => setEditedLibraryName(e.target.value)}
                         className="text-2xl font-bold h-auto py-1 mr-2"
                         autoFocus
                         onKeyDown={(e) => {
@@ -268,7 +509,7 @@ export default function LibraryPage() {
                     </div>
                   ) : (
                     <>
-                      <h1 className="text-2xl font-bold">{currentLibrary.name}</h1>
+                      <h1 className="text-2xl font-bold">{currentLibrary.library_name}</h1>
                       <Button 
                         variant="ghost" 
                         size="sm" 
@@ -290,7 +531,18 @@ export default function LibraryPage() {
             
             <div className="mt-6">
               <div className="flex mb-4 items-center">
-                <Button variant="outline" className="mr-2">Upload Files</Button>
+                <Input
+                  type="file"
+                  className="mr-2 max-w-xs"
+                  onChange={(e) => e.target.files && setFileToUpload(e.target.files[0])}
+                  accept=".pdf,.doc,.docx,.txt,.csv,.json,.md"
+                  value={fileToUpload ? undefined : ''}
+                />
+                {fileToUpload && (
+                  <Button onClick={handleMainUploadButtonClick} disabled={isUploading} className="mr-2">
+                    {isUploading ? "Uploading..." : `Upload ${fileToUpload.name.substring(0,20)}${fileToUpload.name.length > 20 ? '...' : '' }`}
+                  </Button>
+                )}
                 <Button variant="outline" className="mr-2" onClick={handleDuplicateLibrary}>
                   Duplicate Library
                 </Button>
@@ -339,23 +591,27 @@ export default function LibraryPage() {
                       <th className="text-left py-2 px-4">File Name</th>
                       <th className="text-left py-2 px-4">Size</th>
                       <th className="text-left py-2 px-4">Upload Date</th>
+                      <th className="text-left py-2 px-4">Type</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {documents.map((file) => (
-                      <tr key={file.id} className="border-t">
+                    {documents
+                      .filter((file) => file.id != null)
+                      .map((file) => (
+                        <tr key={file.id} className="border-t">
                           <td className="py-2 px-4">
                             <Checkbox
                               checked={selectedDocuments.includes(file.id)}
                               onCheckedChange={() => toggleDocumentSelection(file.id)}
-                              aria-label={`Select document ${file.name}`}
+                              aria-label={`Select document ${file.file_name}`}
                             />
                           </td>
-                        <td className="py-2 px-4">{file.name}</td>
-                        <td className="py-2 px-4">{file.size}</td>
-                        <td className="py-2 px-4">{file.uploadDate}</td>
-                      </tr>
-                    ))}
+                          <td className="py-2 px-4">{file.file_name}</td>
+                          <td className="py-2 px-4">{(file.size_bytes / (1024*1024)).toFixed(2)} MB</td>
+                          <td className="py-2 px-4">{new Date(file.uploaded_at).toLocaleDateString()}</td>
+                          <td className="py-2 px-4">{file.mime_type}</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -367,12 +623,33 @@ export default function LibraryPage() {
                 </Card>
               )}
               
-              <Card className="mt-4 border-dashed text-center">
+              <Card 
+                className={`mt-4 border-dashed text-center cursor-pointer ${isDraggingOver ? 'border-primary bg-secondary' : ''}`}
+                onClick={handleDndCardClick}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
                 <CardContent className="p-6">
-                  <p className="text-muted-foreground mb-2">Drag and drop files here, or click to select files</p>
-                  <Button variant="outline" size="sm">Browse Files</Button>
+                  <p className="text-muted-foreground mb-2">
+                    {isUploading ? "Uploading..." : (isDraggingOver ? "Drop file here" : "Drag and drop files here, or click to select files")}
+                  </p>
+                  {!isUploading && !isDraggingOver && (
+                    <Button variant="outline" size="sm" className="pointer-events-none">
+                      Browse Files
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
+              <input 
+                type="file" 
+                ref={dndFileInputRef} 
+                style={{ display: 'none' }} 
+                onChange={handleDndCardFileSelected}
+                accept={ALLOWED_FILE_TYPES.join(',')}
+                disabled={isUploading}
+              />
             </div>
           </>
         ) : (
@@ -386,7 +663,7 @@ export default function LibraryPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {libraries
                 .slice()
-                .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
+                .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
                 .map((library) => (
                 <Card 
                   key={library.id} 
@@ -395,18 +672,19 @@ export default function LibraryPage() {
                 >
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
-                      <CardTitle>{library.name}</CardTitle>
+                      <CardTitle>{library.library_name}</CardTitle>
                     </div>
                     <CardDescription>{library.description}</CardDescription>
                   </CardHeader>
                   <CardFooter className="flex justify-between pt-2 text-sm">
-                    <span>{library.fileCount} files</span>
-                    <span>Updated: {library.lastUpdated}</span>
+                    <span>Files: {library.stats.file_count}</span>
+                    <span>Updated: {new Date(library.updated_at).toLocaleDateString()}</span>
                   </CardFooter>
                 </Card>
               ))}
               
               <Card 
+                key="add-new"
                 className="border-dashed flex items-center justify-center cursor-pointer"
                 onClick={handleCreateLibrary}
               >
@@ -465,7 +743,8 @@ export default function LibraryPage() {
             <DialogHeader>
               <DialogTitle>Delete Library</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete "{currentLibrary?.name}"? This action cannot be undone.
+                Are you sure you want to delete the library "{currentLibrary?.library_name}"? 
+                This action cannot be undone and all associated documents may be lost.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex justify-between mt-6 gap-4">
