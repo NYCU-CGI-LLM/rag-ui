@@ -57,6 +57,24 @@ interface ApiParserListResponse {
   parsers: ApiParserEntry[];
 }
 
+// API Response Interfaces for Chunker Data  
+interface ApiChunkerEntry {
+  id: string;
+  name: string;
+  module_type: string;
+  chunk_method: string;
+  chunk_size: number | null;
+  chunk_overlap: number | null;
+  params: ApiParserParameterValue;
+  status: string;
+  description?: string;
+}
+
+interface ApiChunkerListResponse {
+  total: number;
+  chunkers: ApiChunkerEntry[];
+}
+
 // New Type Definitions for RAG Configuration
 type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator';
 type ParameterType = 'string' | 'number' | 'boolean' | 'select';
@@ -684,6 +702,92 @@ const transformApiParsersToModules = (apiParsers: ApiParserEntry[]): Module[] =>
   });
 };
 
+// Transform API chunker data to Module format
+const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[] => {
+  return apiChunkers.map(apiChunker => {
+    // Try to find a static template for this module type
+    const staticTemplate = AVAILABLE_MODULES.chunker.find(c => c.id === apiChunker.module_type);
+    
+    const parameters: ParameterDefinition[] = [];
+    const processedParamIds = new Set<string>();
+
+    // Add chunk_method parameter (always present for chunkers)
+    parameters.push({
+      id: 'chunk_method',
+      name: 'Chunk Method',
+      type: 'string',
+      defaultValue: apiChunker.chunk_method,
+      description: 'Method used for chunking'
+    });
+    processedParamIds.add('chunk_method');
+
+    // Add chunk_size parameter if available
+    if (apiChunker.chunk_size !== null) {
+      parameters.push({
+        id: 'chunk_size',
+        name: 'Chunk Size',
+        type: 'number',
+        defaultValue: apiChunker.chunk_size,
+        min: 100,
+        max: 4096,
+        step: 1,
+        description: 'Size of each chunk in tokens'
+      });
+      processedParamIds.add('chunk_size');
+    }
+
+    // Add chunk_overlap parameter if available
+    if (apiChunker.chunk_overlap !== null) {
+      parameters.push({
+        id: 'chunk_overlap',
+        name: 'Chunk Overlap',
+        type: 'number',
+        defaultValue: apiChunker.chunk_overlap,
+        min: 0,
+        max: 512,
+        step: 1,
+        description: 'Number of overlapping tokens between chunks'
+      });
+      processedParamIds.add('chunk_overlap');
+    }
+
+    // If we have a static template, use its parameter definitions as base for remaining params
+    if (staticTemplate) {
+      staticTemplate.parameters.forEach(staticParam => {
+        if (!processedParamIds.has(staticParam.id)) {
+          const apiValue = apiChunker.params[staticParam.id];
+          parameters.push({
+            ...staticParam,
+            defaultValue: apiValue !== undefined ? apiValue : staticParam.defaultValue
+          });
+          processedParamIds.add(staticParam.id);
+        }
+      });
+    }
+
+    // Add any additional parameters from API that weren't processed yet
+    Object.entries(apiChunker.params).forEach(([key, value]) => {
+      if (!processedParamIds.has(key)) {
+        parameters.push({
+          id: key,
+          name: formatParamName(key),
+          type: inferParameterType(value),
+          defaultValue: value,
+          description: `${formatParamName(key)} parameter`
+        });
+      }
+    });
+
+    return {
+      id: apiChunker.id, // Use the UUID from API
+      name: apiChunker.name,
+      description: apiChunker.description || `${apiChunker.module_type} chunker (${apiChunker.chunk_method})`,
+      type: 'chunker' as const,
+      parameters
+    };
+  });
+};
+
 function EvaluationInterface({
   ragConfigs,
   sources,
@@ -720,6 +824,11 @@ function EvaluationInterface({
   const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
   const [apiParsersLoading, setApiParsersLoading] = useState(true);
   const [apiParsersError, setApiParsersError] = useState<string | null>(null);
+
+  // API-fetched chunkers state
+  const [apiFetchedChunkers, setApiFetchedChunkers] = useState<Module[]>([]);
+  const [apiChunkersLoading, setApiChunkersLoading] = useState(true);
+  const [apiChunkersError, setApiChunkersError] = useState<string | null>(null);
 
   const currentRAGConfig = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
@@ -761,6 +870,45 @@ function EvaluationInterface({
     };
 
     fetchParsers();
+  }, []);
+
+  // Fetch chunkers from API on component mount
+  useEffect(() => {
+    const fetchChunkers = async () => {
+      try {
+        setApiChunkersLoading(true);
+        setApiChunkersError(null);
+        
+        // Check if API_URL is configured
+        if (!API_URL) {
+          throw new Error('API_URL not configured');
+        }
+        
+        const response = await fetch(`${API_URL}/chunker/`, {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: ApiChunkerListResponse = await response.json();
+        const transformedChunkers = transformApiChunkersToModules(data.chunkers);
+        setApiFetchedChunkers(transformedChunkers);
+      } catch (error) {
+        console.error('Failed to fetch chunkers:', error);
+        setApiChunkersError(error instanceof Error ? error.message : 'Failed to fetch chunkers');
+        // Fallback to static chunkers if API fails
+        setApiFetchedChunkers(AVAILABLE_MODULES.chunker);
+      } finally {
+        setApiChunkersLoading(false);
+      }
+    };
+
+    fetchChunkers();
   }, []);
 
   useEffect(() => {
@@ -932,9 +1080,11 @@ function EvaluationInterface({
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
     let modulesOfType: Module[];
     
-    // Use API-fetched parsers for parser modules, static modules for others
+    // Use API-fetched modules for parsers and chunkers, static modules for others
     if (moduleType === 'parser') {
       modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
+    } else if (moduleType === 'chunker') {
+      modulesOfType = apiFetchedChunkers.length > 0 ? apiFetchedChunkers : AVAILABLE_MODULES.chunker;
     } else {
       modulesOfType = AVAILABLE_MODULES[moduleType];
     }
@@ -1042,6 +1192,10 @@ function EvaluationInterface({
       modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
       isLoading = apiParsersLoading;
       errorMessage = apiParsersError;
+    } else if (moduleType === 'chunker') {
+      modulesOfType = apiFetchedChunkers.length > 0 ? apiFetchedChunkers : AVAILABLE_MODULES.chunker;
+      isLoading = apiChunkersLoading;
+      errorMessage = apiChunkersError;
     } else {
       modulesOfType = AVAILABLE_MODULES[moduleType];
     }
@@ -1055,15 +1209,15 @@ function EvaluationInterface({
             {selectedModuleDetails && <span className="text-xs text-muted-foreground">{selectedModuleDetails.name}</span>}
         </div>
         
-        {/* Loading state for parsers */}
-        {moduleType === 'parser' && isLoading && (
-          <div className="text-sm text-muted-foreground">Loading parsers from API...</div>
+        {/* Loading state for API modules */}
+        {(moduleType === 'parser' || moduleType === 'chunker') && isLoading && (
+          <div className="text-sm text-muted-foreground">Loading {moduleType}s from API...</div>
         )}
         
-        {/* Error state for parsers */}
-        {moduleType === 'parser' && errorMessage && (
+        {/* Error state for API modules */}
+        {(moduleType === 'parser' || moduleType === 'chunker') && errorMessage && (
           <div className="text-sm text-red-600">
-            Failed to load parsers: {errorMessage}. Using fallback options.
+            Failed to load {moduleType}s: {errorMessage}. Using fallback options.
           </div>
         )}
         
@@ -1211,6 +1365,23 @@ function EvaluationInterface({
                 </div>
               )}
               
+              {/* Show loading state for chunkers */}
+              {apiChunkersLoading && (
+                <div className="p-4 border rounded-md bg-blue-50 text-blue-800">
+                  <p className="text-sm">Loading available chunkers from API...</p>
+                </div>
+              )}
+              
+              {/* Show error state for chunkers */}
+              {apiChunkersError && (
+                <div className="p-4 border rounded-md bg-yellow-50 text-yellow-800">
+                  <p className="text-sm">
+                    Warning: Failed to load chunkers from API ({apiChunkersError}). 
+                    Using fallback options. Some features may be limited.
+                  </p>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 <Label htmlFor="config-name">Configuration Name</Label>
                 <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
@@ -1225,8 +1396,8 @@ function EvaluationInterface({
               {renderModuleSelector('retriever', selectedRetriever, handleNewConfigRetrieverSelect, retrieverParams, handleNewConfigParamChange)}
 
               <Button className="w-full" onClick={handleSaveConfig} 
-                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever || apiParsersLoading}>
-                {apiParsersLoading ? "Loading Parsers..." : "Save Preprocessing & Retrieval Configuration"}
+                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever || apiParsersLoading || apiChunkersLoading}>
+                {(apiParsersLoading || apiChunkersLoading) ? "Loading Modules..." : "Save Preprocessing & Retrieval Configuration"}
               </Button> 
             </CardContent>
           </Card>
