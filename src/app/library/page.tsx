@@ -469,6 +469,8 @@ export default function LibraryPage() {
                     variant="destructive" 
                     onClick={() => setIsDeleteLibraryDialogOpen(true)}
                     className="flex items-center"
+                    disabled
+                    title="Coming soon"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete Library
@@ -543,7 +545,13 @@ export default function LibraryPage() {
                     {isUploading ? "Uploading..." : `Upload ${fileToUpload.name.substring(0,20)}${fileToUpload.name.length > 20 ? '...' : '' }`}
                   </Button>
                 )}
-                <Button variant="outline" className="mr-2" onClick={handleDuplicateLibrary}>
+                <Button 
+                  variant="outline" 
+                  className="mr-2" 
+                  onClick={handleDuplicateLibrary}
+                  disabled
+                  title="Coming soon"
+                >
                   Duplicate Library
                 </Button>
                 {selectedDocuments.length > 0 && (
