@@ -132,6 +132,30 @@ interface ApiIndexerDetailResponse {
   description?: string;
 }
 
+// API request interface for creating retriever
+interface CreateRetrieverRequest {
+  name: string;
+  description?: string;
+  library_id: string;
+  parser_id: string;
+  chunker_id: string;
+  indexer_id: string;
+  top_k?: number;
+  params?: object;
+  collection_name?: string;
+}
+
+interface CreateRetrieverResponse {
+  retriever_id: string;
+  status: string;
+  parse_results: number;
+  chunk_results: number;
+  successful_chunks: number;
+  collection_name?: string;
+  total_chunks?: number;
+  index_result: object;
+}
+
 type ModuleType = 'parser' | 'chunker' | 'generator' | 'indexer';
 type ParameterType = 'string' | 'number' | 'boolean' | 'select';
 
@@ -426,6 +450,9 @@ export default function ConfigureRAGPage() {
   const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
   const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
 
+  // API creation state
+  const [isCreatingRetriever, setIsCreatingRetriever] = useState(false);
+
   const CREATE_NEW_CONFIG_VALUE = "__CREATE_NEW__";
 
   // Function to reset form to a "create new" state
@@ -442,8 +469,31 @@ export default function ConfigureRAGPage() {
   };
 
   useEffect(() => {
-    const storedSources = localStorage.getItem('sources');
-    if (storedSources) setSources(JSON.parse(storedSources));
+    const fetchLibraries = async () => {
+      try {
+        if (!API_URL) throw new Error('API_URL not configured');
+        const response = await fetch(`${API_URL}/library/`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const libraries = await response.json();
+        
+        // Transform library data to sources format
+        const sourcesFromLibraries: Source[] = libraries.map((lib: any) => ({
+          id: lib.id,
+          name: lib.library_name,
+          description: lib.description || '',
+          type: 'library' as const
+        }));
+        
+        setSources(sourcesFromLibraries);
+      } catch (error) {
+        console.error('Failed to fetch libraries:', error);
+        // Fallback to localStorage if API fails
+        const storedSources = localStorage.getItem('sources');
+        if (storedSources) setSources(JSON.parse(storedSources));
+      }
+    };
+    
+    fetchLibraries();
   }, []);
 
   useEffect(() => {
@@ -596,13 +646,22 @@ export default function ConfigureRAGPage() {
 
   // Function to load API retriever config into form
   const loadApiRetrieverConfig = async (retrieverConfig: ApiRetrieverEntry) => {
-    setCurrentConfigName(retrieverConfig.name);
+    // Create a unique name for the new config based on the template
+    const timestamp = new Date().toISOString().slice(11, 19).replace(/:/g, '');
+    const newConfigName = `${retrieverConfig.name}_copy_${timestamp}`;
+    
+    setCurrentConfigName(newConfigName);
     setCurrentConfigDescription(retrieverConfig.description || "");
     
     // Set the component IDs
     setSelectedParser(retrieverConfig.parser_id);
     setSelectedChunker(retrieverConfig.chunker_id);
     setSelectedIndexer(retrieverConfig.indexer_id);
+    
+    // Set the library ID if available
+    if (retrieverConfig.library_id) {
+      setSelectedSourceForContext(retrieverConfig.library_id);
+    }
     
     // Fetch detailed component information and set parameters
     try {
@@ -647,9 +706,6 @@ export default function ConfigureRAGPage() {
       setChunkerParams(initializeDefaultParamsForModule('chunker', retrieverConfig.chunker_id));
       setIndexerParams(initializeDefaultParamsForModule('indexer', retrieverConfig.indexer_id));
     }
-    
-    // Clear source selection for API configs
-    setSelectedSourceForContext("");
   };
 
   const handleNewConfigParserSelect = (moduleId: string) => {
@@ -677,34 +733,61 @@ export default function ConfigureRAGPage() {
     }
   };
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer) {
       alert("Please provide a configuration name and select a parser, chunker, and indexer.");
       return;
     }
 
-    const newConfig: RAGConfig = {
-      id: `custom_${Date.now()}_${currentConfigName.trim().replace(/\s+/g, '_').toLowerCase()}`,
-      name: currentConfigName.trim(),
-      description: currentConfigDescription.trim(),
-      parser: { moduleId: selectedParser, parameterValues: parserParams },
-      chunker: { moduleId: selectedChunker, parameterValues: chunkerParams },
-      indexer: { moduleId: selectedIndexer, parameterValues: indexerParams },
-      availableMetrics: Object.values(ALL_METRICS),
-    };
-
-    const existingConfigs: RAGConfig[] = JSON.parse(localStorage.getItem('ragConfigs') || '[]');
-    
-    // Check if configuration name already exists
-    if (existingConfigs.some(config => config.name === currentConfigName.trim())) {
-      alert("A Preprocessing & Retrieval configuration with this name already exists. Please choose a different name.");
+    if (!selectedSourceForContext) {
+      alert("Please select a source/library for the retriever.");
       return;
     }
 
-    const updatedConfigs = [...existingConfigs, newConfig];
-    localStorage.setItem('ragConfigs', JSON.stringify(updatedConfigs));
-    alert("Preprocessing & Retrieval Configuration created!");
-    router.push('/eval');
+    try {
+      setIsCreatingRetriever(true);
+
+      const requestBody: CreateRetrieverRequest = {
+        name: currentConfigName.trim(),
+        description: currentConfigDescription.trim() || undefined,
+        library_id: selectedSourceForContext,
+        parser_id: selectedParser,
+        chunker_id: selectedChunker,
+        indexer_id: selectedIndexer,
+        top_k: 10, // Default value
+        params: {}, // Could be extended to include custom params
+        collection_name: `${currentConfigName.trim().replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`
+      };
+
+      if (!API_URL) throw new Error('API_URL not configured');
+
+      const response = await fetch(`${API_URL}/retriever/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const result: CreateRetrieverResponse = await response.json();
+      
+      alert(`Retriever configuration created successfully!\n\nRetriever ID: ${result.retriever_id}\nStatus: ${result.status}\nCollection: ${result.collection_name || 'N/A'}\nTotal Chunks: ${result.total_chunks || 'N/A'}`);
+      
+      // Navigate back to eval page or refresh the current page
+      router.push('/eval');
+
+    } catch (error) {
+      console.error('Failed to create retriever:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create retriever configuration';
+      alert(`Error creating retriever: ${errorMessage}`);
+    } finally {
+      setIsCreatingRetriever(false);
+    }
   };
 
   const renderModuleSelector = (
@@ -841,6 +924,9 @@ export default function ConfigureRAGPage() {
                         )}
                     </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Loading a template will auto-generate a unique name and copy all settings for creating a new configuration.
+                </p>
             </div>
 
             <div className="space-y-2">
@@ -854,10 +940,10 @@ export default function ConfigureRAGPage() {
 
             {/* Source Selection - As requested */}
             <div className="space-y-2">
-                <Label htmlFor="source-select-context">Select Source (for context/reference)</Label>
+                <Label htmlFor="source-select-context">Select Source/Library (Required)</Label>
                 <Select value={selectedSourceForContext} onValueChange={setSelectedSourceForContext}>
                     <SelectTrigger id="source-select-context">
-                        <SelectValue placeholder="Select a source" />
+                        <SelectValue placeholder="Select a library" />
                     </SelectTrigger>
                     <SelectContent>
                         {sources.map(source => (
@@ -877,8 +963,8 @@ export default function ConfigureRAGPage() {
             {renderModuleSelector('indexer', selectedIndexer, handleNewConfigIndexerSelect, indexerParams, handleNewConfigParamChange)}
 
             <Button className="w-full mt-6" onClick={handleSaveConfig} 
-              disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || apiParsersLoading || apiChunkersLoading || apiIndexersLoading}>
-              {(apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Create Configuration"}
+              disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || !selectedSourceForContext || apiParsersLoading || apiChunkersLoading || apiIndexersLoading || isCreatingRetriever}>
+              {isCreatingRetriever ? "Creating Retriever..." : (apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Create Retriever Configuration"}
             </Button>
           </CardContent>
         </Card>
