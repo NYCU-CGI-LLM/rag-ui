@@ -8,6 +8,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 const navItems = [
   { path: "/", label: "Home" },
   { path: "/library", label: "Library" },
+  { path: "/configure", label: "Config" },
   { path: "/eval", label: "Evaluation" },
   { path: "/chat", label: "Chat" },
 ];

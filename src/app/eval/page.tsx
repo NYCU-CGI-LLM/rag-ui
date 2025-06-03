@@ -33,6 +33,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { useRouter } from 'next/navigation';
 
 // API Configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -505,11 +506,9 @@ const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[]
 function EvaluationInterface({
   ragConfigs,
   sources,
-  setRagConfigs
 }: {
   ragConfigs: RAGConfig[];
   sources: Source[];
-  setRagConfigs: React.Dispatch<React.SetStateAction<RAGConfig[]>>;
 }) {
   const [selectedRAGConfigId, setSelectedRAGConfigId] = useState<string>("");
   const [selectedSource, setSelectedSource] = useState<string>("");
@@ -522,17 +521,6 @@ function EvaluationInterface({
   // Generator selection for evaluation (moved from RAG config)
   const [selectedGenerator, setSelectedGenerator] = useState<string>("");
   const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({});
-
-  // State for the new RAG Config creation/editing UI
-  const [currentConfigName, setCurrentConfigName] = useState<string>("");
-  const [currentConfigDescription, setCurrentConfigDescription] = useState<string>("");
-  const [selectedParser, setSelectedParser] = useState<string>("");
-  const [selectedChunker, setSelectedChunker] = useState<string>("");
-  const [selectedIndexer, setSelectedIndexer] = useState<string>(""); // Changed from 'selectedRetriever'
-  // selectedGenerator removed from config creation - now only for evaluation
-  const [parserParams, setParserParams] = useState<{ [key: string]: string | number | boolean }>({});
-  const [chunkerParams, setChunkerParams] = useState<{ [key: string]: string | number | boolean }>({});
-  const [indexerParams, setIndexerParams] = useState<{ [key: string]: string | number | boolean }>({}); // Changed from 'retrieverParams'
 
   // API-fetched parsers state
   const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
@@ -551,145 +539,6 @@ function EvaluationInterface({
 
   const currentRAGConfig = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
-
-  // Fetch parsers from API on component mount
-  useEffect(() => {
-    const fetchParsers = async () => {
-      try {
-        setApiParsersLoading(true);
-        setApiParsersError(null);
-        
-        // Check if API_URL is configured
-        if (!API_URL) {
-          throw new Error('API_URL not configured');
-        }
-        
-        const response = await fetch(`${API_URL}/parser/`, {
-          method: 'GET',
-          headers: {
-            'accept': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data: ApiParserListResponse = await response.json();
-        const transformedParsers = transformApiParsersToModules(data.parsers);
-        setApiFetchedParsers(transformedParsers);
-      } catch (error) {
-        console.error('Failed to fetch parsers:', error);
-        setApiParsersError(error instanceof Error ? error.message : 'Failed to fetch parsers');
-        // Set empty array instead of fallback to static parsers
-        setApiFetchedParsers([]);
-      } finally {
-        setApiParsersLoading(false);
-      }
-    };
-
-    fetchParsers();
-  }, []);
-
-  // Fetch chunkers from API on component mount
-  useEffect(() => {
-    const fetchChunkers = async () => {
-      try {
-        setApiChunkersLoading(true);
-        setApiChunkersError(null);
-        
-        // Check if API_URL is configured
-        if (!API_URL) {
-          throw new Error('API_URL not configured');
-        }
-        
-        const response = await fetch(`${API_URL}/chunker/`, {
-          method: 'GET',
-          headers: {
-            'accept': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data: ApiChunkerListResponse = await response.json();
-        const transformedChunkers = transformApiChunkersToModules(data.chunkers);
-        setApiFetchedChunkers(transformedChunkers);
-      } catch (error) {
-        console.error('Failed to fetch chunkers:', error);
-        setApiChunkersError(error instanceof Error ? error.message : 'Failed to fetch chunkers');
-        // Set empty array instead of fallback to static chunkers
-        setApiFetchedChunkers([]);
-      } finally {
-        setApiChunkersLoading(false);
-      }
-    };
-
-    fetchChunkers();
-  }, []);
-
-  // Fetch indexers from API on component mount
-  useEffect(() => {
-    const fetchIndexers = async () => {
-      try {
-        setApiIndexersLoading(true);
-        setApiIndexersError(null);
-        
-        // Check if API_URL is configured
-        if (!API_URL) {
-          throw new Error('API_URL not configured');
-        }
-        
-        const response = await fetch(`${API_URL}/indexer/`, {
-          method: 'GET',
-          headers: {
-            'accept': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data: ApiIndexerListResponse = await response.json();
-        const transformedIndexers = transformApiIndexersToModules(data.indexers);
-        setApiFetchedIndexers(transformedIndexers);
-      } catch (error) {
-        console.error('Failed to fetch indexers:', error);
-        setApiIndexersError(error instanceof Error ? error.message : 'Failed to fetch indexers');
-        // Set empty array instead of fallback to static indexers
-        setApiFetchedIndexers([]);
-      } finally {
-        setApiIndexersLoading(false);
-      }
-    };
-
-    fetchIndexers();
-  }, []);
-
-  useEffect(() => {
-    if (selectedRAGConfigId && activeTab === 'configure') {
-      const configToLoad = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
-      if (configToLoad) {
-        setCurrentConfigName(configToLoad.name + " (Copy)");
-        setCurrentConfigDescription(configToLoad.description);
-        
-        setSelectedParser(configToLoad.parser.moduleId);
-        setParserParams({...configToLoad.parser.parameterValues});
-        
-        setSelectedChunker(configToLoad.chunker.moduleId);
-        setChunkerParams({...configToLoad.chunker.parameterValues});
-        
-        setSelectedIndexer(configToLoad.indexer.moduleId); // Changed from 'retriever'
-        setIndexerParams({...configToLoad.indexer.parameterValues}); // Changed from 'retriever'
-
-        // Generator is no longer part of RAG config
-      } 
-    } else if (activeTab !== 'configure') {
-    }
-  }, [selectedRAGConfigId, activeTab, ragConfigs]);
 
   useEffect(() => {
     if (!selectedSource) {
@@ -859,82 +708,16 @@ function EvaluationInterface({
     return params;
   };
 
-  const handleNewConfigParserSelect = (moduleId: string) => {
-    setSelectedParser(moduleId);
-    setParserParams(initializeDefaultParamsForModule('parser', moduleId));
-  };
-  const handleNewConfigChunkerSelect = (moduleId: string) => {
-    setSelectedChunker(moduleId);
-    setChunkerParams(initializeDefaultParamsForModule('chunker', moduleId));
-  };
-  const handleNewConfigIndexerSelect = (moduleId: string) => { // Changed from 'handleNewConfigRetrieverSelect'
-    setSelectedIndexer(moduleId);
-    setIndexerParams(initializeDefaultParamsForModule('indexer', moduleId));
-  };
-
   const handleNewConfigParamChange = (
     moduleType: ModuleType, 
     paramId: string, 
     value: string | number | boolean
   ) => {
-    switch (moduleType) {
-      case 'parser':
-        setParserParams(prev => ({ ...prev, [paramId]: value }));
-        break;
-      case 'chunker':
-        setChunkerParams(prev => ({ ...prev, [paramId]: value }));
-        break;
-      case 'indexer': // Changed from 'retriever'
-        setIndexerParams(prev => ({ ...prev, [paramId]: value }));
-        break;
-      case 'generator':
+    if (moduleType === 'generator') {
         setGeneratorParams(prev => ({ ...prev, [paramId]: value }));
-        break;
+    } else {
+        console.warn(`handleNewConfigParamChange called with unhandled moduleType: ${moduleType}`)
     }
-  };
-
-  const handleSaveConfig = () => {
-    if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer) { // Changed from 'selectedRetriever'
-      alert("Please provide a configuration name and select a parser, chunker, and indexer."); // Changed from 'retriever'
-      return;
-    }
-    if (ragConfigs.some(config => config.name === currentConfigName.trim())) {
-      alert("A Preprocessing & Retrieval configuration with this name already exists. Please choose a different name.");
-      return;
-    }
-
-    const newConfig: RAGConfig = {
-      id: `custom_${Date.now()}_${currentConfigName.trim().replace(/\s+/g, '_').toLowerCase()}`,
-      name: currentConfigName.trim(),
-      description: currentConfigDescription.trim(),
-      parser: {
-        moduleId: selectedParser,
-        parameterValues: parserParams,
-      },
-      chunker: {
-        moduleId: selectedChunker,
-        parameterValues: chunkerParams,
-      },
-      indexer: { // Changed from 'retriever'
-        moduleId: selectedIndexer,
-        parameterValues: indexerParams,
-      },
-      // generator removed from config
-      availableMetrics: Object.values(ALL_METRICS),
-    };
-
-    setRagConfigs(prev => [...prev, newConfig]);
-    alert("Preprocessing & Retrieval Configuration saved! You can now select it for evaluation in the 'Run Evaluation' tab.");
-
-    setCurrentConfigName("");
-    setCurrentConfigDescription("");
-    setSelectedParser("");
-    setParserParams({});
-    setSelectedChunker("");
-    setChunkerParams({});
-    setSelectedIndexer(""); // Changed from 'selectedRetriever'
-    setIndexerParams({}); // Changed from 'retrieverParams'
-    // generator reset removed
   };
 
   const renderModuleSelector = (
@@ -944,12 +727,13 @@ function EvaluationInterface({
     currentParams: { [key: string]: string | number | boolean },
     onParamChange: (moduleType: ModuleType, paramId: string, value: string | number | boolean) => void
   ) => {
-    // Get the appropriate module list based on type
     let modulesOfType: Module[];
     let isLoading = false;
     let errorMessage: string | null = null;
     
-    if (moduleType === 'parser') {
+    if (moduleType === 'generator') {
+      modulesOfType = GENERATOR_MODULES;
+    } else if (moduleType === 'parser') {
       modulesOfType = apiFetchedParsers;
       isLoading = apiParsersLoading;
       errorMessage = apiParsersError;
@@ -961,14 +745,8 @@ function EvaluationInterface({
       modulesOfType = apiFetchedIndexers;
       isLoading = apiIndexersLoading;
       errorMessage = apiIndexersError;
-    } else if (moduleType === 'generator') {
-      modulesOfType = GENERATOR_MODULES;
-      isLoading = false; // Generators are static for now
-      errorMessage = null;
     } else {
       modulesOfType = [];
-      isLoading = false;
-      errorMessage = null;
     }
     
     const selectedModuleDetails = modulesOfType.find(m => m.id === selectedModuleId);
@@ -980,19 +758,16 @@ function EvaluationInterface({
             {selectedModuleDetails && <span className="text-xs text-muted-foreground">{selectedModuleDetails.name}</span>}
         </div>
         
-        {/* Loading state for API modules */}
         {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && isLoading && (
           <div className="text-sm text-muted-foreground">Loading {moduleType}s from API...</div>
         )}
         
-        {/* Error state for API modules */}
         {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && errorMessage && (
           <div className="text-sm text-red-600">
             Error: Failed to load {moduleType}s from API ({errorMessage}). Configuration cannot proceed without {moduleType}s.
           </div>
         )}
         
-        {/* Empty state when no modules available and not loading and no error */}
         {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && !isLoading && !errorMessage && modulesOfType.length === 0 && (
           <div className="text-sm text-muted-foreground">
             No {moduleType}s available from the API. Please check the API connection or configuration.
@@ -1114,94 +889,10 @@ function EvaluationInterface({
   return (
     <div className="space-y-6 p-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="configure">Configure Preprocessing & Retrieval</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="run">Run Evaluation</TabsTrigger>
           <TabsTrigger value="results">View Results</TabsTrigger>
         </TabsList>
-        
-        <TabsContent value="configure" className="pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create New Preprocessing & Retrieval Configuration</CardTitle>
-              <CardDescription>
-                Define a new preprocessing and retrieval pipeline by selecting modules and setting their parameters. 
-                Generator will be selected separately during evaluation.
-                You can also select an existing configuration from the 'Run Evaluation' tab dropdown to load its settings here as a template.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Show loading state for parsers */}
-              {apiParsersLoading && (
-                <div className="p-4 border rounded-md bg-blue-50 text-blue-800">
-                  <p className="text-sm">Loading available parsers from API...</p>
-                </div>
-              )}
-              
-              {/* Show error state for parsers */}
-              {apiParsersError && (
-                <div className="p-4 border rounded-md bg-red-50 text-red-800">
-                  <p className="text-sm">
-                    Error: Failed to load parsers from API ({apiParsersError}). 
-                    Configuration cannot proceed without parsers.
-                  </p>
-                </div>
-              )}
-              
-              {/* Show loading state for chunkers */}
-              {apiChunkersLoading && (
-                <div className="p-4 border rounded-md bg-blue-50 text-blue-800">
-                  <p className="text-sm">Loading available chunkers from API...</p>
-                </div>
-              )}
-              
-              {/* Show error state for chunkers */}
-              {apiChunkersError && (
-                <div className="p-4 border rounded-md bg-red-50 text-red-800">
-                  <p className="text-sm">
-                    Error: Failed to load chunkers from API ({apiChunkersError}). 
-                    Configuration cannot proceed without chunkers.
-                  </p>
-                </div>
-              )}
-              
-              {/* Show loading state for indexers */}
-              {apiIndexersLoading && (
-                <div className="p-4 border rounded-md bg-blue-50 text-blue-800">
-                  <p className="text-sm">Loading available indexers from API...</p>
-                </div>
-              )}
-              
-              {/* Show error state for indexers */}
-              {apiIndexersError && (
-                <div className="p-4 border rounded-md bg-red-50 text-red-800">
-                  <p className="text-sm">
-                    Error: Failed to load indexers from API ({apiIndexersError}). 
-                    Configuration cannot proceed without indexers.
-                  </p>
-                </div>
-              )}
-              
-              <div className="space-y-2">
-                <Label htmlFor="config-name">Configuration Name</Label>
-                <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="config-description">Description</Label>
-                <Input id="config-description" value={currentConfigDescription} onChange={(e) => setCurrentConfigDescription(e.target.value)} placeholder="A brief description of this configuration (optional)" />
-              </div>
-              
-              {renderModuleSelector('parser', selectedParser, handleNewConfigParserSelect, parserParams, handleNewConfigParamChange)}
-              {renderModuleSelector('chunker', selectedChunker, handleNewConfigChunkerSelect, chunkerParams, handleNewConfigParamChange)}
-              {renderModuleSelector('indexer', selectedIndexer, handleNewConfigIndexerSelect, indexerParams, handleNewConfigParamChange)}
-
-              <Button className="w-full" onClick={handleSaveConfig} 
-                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || apiParsersLoading || apiChunkersLoading || apiIndexersLoading}>
-                {(apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Save Preprocessing & Retrieval Configuration"}
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
         
         <TabsContent value="run" className="pt-4">
           <Card>
@@ -1253,7 +944,6 @@ function EvaluationInterface({
                   </div>
                 </div>
 
-                {/* Generator Selection */}
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="generator-eval">Generator</Label>
@@ -1277,7 +967,6 @@ function EvaluationInterface({
                     </Select>
                   </div>
 
-                  {/* Generator Parameters */}
                   {selectedGenerator && (
                     <div className="p-4 border rounded-md bg-muted/20">
                       <h4 className="text-sm font-medium mb-3">Generator Parameters</h4>
@@ -1489,125 +1178,148 @@ function EvaluationInterface({
 export default function EvalPage() {
   const [ragConfigs, setRagConfigs] = useState<RAGConfig[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const router = useRouter();
 
   useEffect(() => {
-    // Updated demo RAG configurations - now without generator
-    const demoConfigs: RAGConfig[] = [
-      {
-        id: "rag1_basic_autorag",
-        name: "Basic AutoRAG",
-        description: "A simple AutoRAG configuration with basic modules.",
-        parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-        chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
-        indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 1536, similarity_metric: "cosine" } }, // Changed from 'retriever'
-        // generator removed from config
-        availableMetrics: [
-          ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
-          ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
-          ALL_METRICS.response_time,
-        ],
-      },
-      {
-        id: "rag2_vector_autorag",
-        name: "Vector AutoRAG",
-        description: "AutoRAG configuration using vector database retrieval.",
-        parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-        chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
-        indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_small", dimension: 1536, similarity_metric: "cosine" } }, // Changed from 'retriever'
-        // generator removed from config
-        availableMetrics: [
-          ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
-          ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
-          ALL_METRICS.geval_coherence, ALL_METRICS.geval_consistency, ALL_METRICS.geval_fluency, ALL_METRICS.geval_relevance,
-        ],
-      },
-      {
-        id: "rag3_hybrid_autorag",
-        name: "Hybrid AutoRAG",
-        description: "AutoRAG configuration using hybrid retrieval with RRF.",
-        parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-        chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
-        indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 3072, similarity_metric: "cosine" } }, // Changed from 'retriever'
-        // generator removed from config
-        availableMetrics: [
-          ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
-          ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
-          ALL_METRICS.geval_coherence, ALL_METRICS.geval_consistency, ALL_METRICS.geval_fluency, ALL_METRICS.geval_relevance,
-          ALL_METRICS.overall_quality_score, ALL_METRICS.groundedness,
-        ],
-      },
-    ];
-    
-    const demoSystemBenchmarks: Source[] = [
-      {
-        id: "longbench_hotpotqa",
-        name: "LongBench/HotpotQA",
-        description: "Question answering over multiple supporting documents, requiring reasoning.",
-        supported_metrics: [
-            ALL_METRICS.exact_match,
-            ALL_METRICS.answer_f1_score,
-            ALL_METRICS.answer_recall,
-            ALL_METRICS.precision,
-            ALL_METRICS.recall,
-        ],
-        type: 'benchmark' as const
-      },
-      {
-        id: "longbench_narrativeqa",
-        name: "LongBench/NarrativeQA",
-        description: "Question answering based on stories or books, requiring understanding of narratives.",
-        supported_metrics: [
-            ALL_METRICS.rouge,
-            ALL_METRICS.bleu,
-            ALL_METRICS.meteor,
-            ALL_METRICS.bert_score,
-        ],
-        type: 'benchmark' as const
-      },
-      {
-        id: "techqa",
-        name: "TechQA",
-        description: "Technical question answering, often involving specialized vocabulary and concepts.",
-        supported_metrics: [
-            ALL_METRICS.precision,
-            ALL_METRICS.recall,
-        ],
-        type: 'benchmark' as const
-      },
-      {
-        id: "emanual",
-        name: "E-manual",
-        description: "Question answering and information retrieval from electronic manuals.",
-        supported_metrics: [
-            ALL_METRICS.recall,
-            ALL_METRICS.precision,
-        ],
-        type: 'benchmark' as const
-      },
-    ];
+    const storedRagConfigs = localStorage.getItem('ragConfigs');
+    const storedSources = localStorage.getItem('sources');
 
-    const demoUserLibraries: LibraryStub[] = [
-      {
-        id: "tech_docs",
-        name: "Technical Documentation", 
-        description: "Technical manuals and API documentation for eval"
-      },
-      {
-        id: "research_papers", 
-        name: "Research Papers", 
-        description: "Academic papers and research notes for eval"
-      },
-    ];
+    if (storedRagConfigs) {
+      setRagConfigs(JSON.parse(storedRagConfigs));
+    } else {
+      const demoConfigs: RAGConfig[] = [
+        {
+          id: "rag1_basic_autorag",
+          name: "Basic AutoRAG",
+          description: "A simple AutoRAG configuration with basic modules.",
+          parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
+          chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
+          indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 1536, similarity_metric: "cosine" } },
+          availableMetrics: [
+            ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
+            ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
+            ALL_METRICS.response_time,
+          ],
+        },
+        {
+          id: "rag2_vector_autorag",
+          name: "Vector AutoRAG",
+          description: "AutoRAG configuration using vector database retrieval.",
+          parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
+          chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
+          indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_small", dimension: 1536, similarity_metric: "cosine" } },
+          availableMetrics: [
+            ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
+            ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
+            ALL_METRICS.geval_coherence, ALL_METRICS.geval_consistency, ALL_METRICS.geval_fluency, ALL_METRICS.geval_relevance,
+          ],
+        },
+        {
+          id: "rag3_hybrid_autorag",
+          name: "Hybrid AutoRAG",
+          description: "AutoRAG configuration using hybrid retrieval with RRF.",
+          parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
+          chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
+          indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 3072, similarity_metric: "cosine" } },
+          availableMetrics: [
+            ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
+            ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
+            ALL_METRICS.geval_coherence, ALL_METRICS.geval_consistency, ALL_METRICS.geval_fluency, ALL_METRICS.geval_relevance,
+            ALL_METRICS.overall_quality_score, ALL_METRICS.groundedness,
+          ],
+        },
+      ];
+      setRagConfigs(demoConfigs);
+      localStorage.setItem('ragConfigs', JSON.stringify(demoConfigs));
+    }
 
-    const librarySources: Source[] = demoUserLibraries.map(lib => ({
-      ...lib,
-      id: `lib_${lib.id}`,
-      type: 'library',
-      supported_metrics: DEFAULT_LIBRARY_METRICS_OBJECTS,
-    }));
+    if (storedSources) {
+      setSources(JSON.parse(storedSources));
+    } else {
+      const demoSystemBenchmarks: Source[] = [
+        {
+          id: "longbench_hotpotqa",
+          name: "LongBench/HotpotQA",
+          description: "Question answering over multiple supporting documents, requiring reasoning.",
+          supported_metrics: [
+              ALL_METRICS.exact_match,
+              ALL_METRICS.answer_f1_score,
+              ALL_METRICS.answer_recall,
+              ALL_METRICS.precision,
+              ALL_METRICS.recall,
+          ],
+          type: 'benchmark' as const
+        },
+        {
+          id: "longbench_narrativeqa",
+          name: "LongBench/NarrativeQA",
+          description: "Question answering based on stories or books, requiring understanding of narratives.",
+          supported_metrics: [
+              ALL_METRICS.rouge,
+              ALL_METRICS.bleu,
+              ALL_METRICS.meteor,
+              ALL_METRICS.bert_score,
+          ],
+          type: 'benchmark' as const
+        },
+        {
+          id: "techqa",
+          name: "TechQA",
+          description: "Technical question answering, often involving specialized vocabulary and concepts.",
+          supported_metrics: [
+              ALL_METRICS.precision,
+              ALL_METRICS.recall,
+          ],
+          type: 'benchmark' as const
+        },
+        {
+          id: "emanual",
+          name: "E-manual",
+          description: "Question answering and information retrieval from electronic manuals.",
+          supported_metrics: [
+              ALL_METRICS.recall,
+              ALL_METRICS.precision,
+          ],
+          type: 'benchmark' as const
+        },
+      ];
+      const demoUserLibraries: LibraryStub[] = [
+        {
+          id: "tech_docs",
+          name: "Technical Documentation", 
+          description: "Technical manuals and API documentation for eval"
+        },
+        {
+          id: "research_papers", 
+          name: "Research Papers", 
+          description: "Academic papers and research notes for eval"
+        },
+      ];
+      const librarySources: Source[] = demoUserLibraries.map(lib => ({
+        ...lib,
+        id: `lib_${lib.id}`,
+        type: 'library',
+        supported_metrics: DEFAULT_LIBRARY_METRICS_OBJECTS,
+      }));
+      const allSources = [...demoSystemBenchmarks, ...librarySources];
+      setSources(allSources);
+      localStorage.setItem('sources', JSON.stringify(allSources));
+    }
 
-    setRagConfigs(demoConfigs);
-    setSources([...demoSystemBenchmarks, ...librarySources]);
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'ragConfigs' && event.newValue) {
+        setRagConfigs(JSON.parse(event.newValue));
+      }
+      if (event.key === 'sources' && event.newValue) {
+        setSources(JSON.parse(event.newValue));
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   return (
@@ -1615,14 +1327,17 @@ export default function EvalPage() {
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold">RAG Evaluation & Configuration</h1>
+            <h1 className="text-2xl font-bold">RAG Evaluation</h1>
             <p className="text-muted-foreground">
-              Configure RAG pipelines and evaluate them on standardized sources.
+              Evaluate RAG pipelines on standardized sources. Configure pipelines on a separate page.
             </p>
           </div>
+          <Button onClick={() => router.push('/eval/configure')}>
+            Configure RAG Pipelines
+          </Button>
         </div>
 
-        <EvaluationInterface ragConfigs={ragConfigs} sources={sources} setRagConfigs={setRagConfigs} />
+        <EvaluationInterface ragConfigs={ragConfigs} sources={sources} />
       </div>
     </PageLayout>
   );
