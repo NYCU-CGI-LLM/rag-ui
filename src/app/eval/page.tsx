@@ -75,8 +75,24 @@ interface ApiChunkerListResponse {
   chunkers: ApiChunkerEntry[];
 }
 
+// API Response Interfaces for Indexer Data
+interface ApiIndexerEntry {
+  id: string;
+  name: string;
+  index_type: string;
+  model: string;
+  params: ApiParserParameterValue;
+  status: string;
+  description?: string;
+}
+
+interface ApiIndexerListResponse {
+  total: number;
+  indexers: ApiIndexerEntry[];
+}
+
 // New Type Definitions for RAG Configuration
-type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator';
+type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator' | 'indexer';
 type ParameterType = 'string' | 'number' | 'boolean' | 'select';
 
 interface ParameterDefinition {
@@ -111,7 +127,7 @@ interface RAGConfig {
   description: string;
   parser: SelectedModuleConfig;
   chunker: SelectedModuleConfig;
-  retriever: SelectedModuleConfig;
+  indexer: SelectedModuleConfig; // Changed from 'retriever' to 'indexer' to match API
   // generator removed - will be selected separately in evaluation
   availableMetrics: Metric[]; // This remains for now
 }
@@ -455,6 +471,41 @@ const AVAILABLE_MODULES: { [key in ModuleType]: Module[] } = {
       ]
     }
   ],
+  indexer: [
+    {
+      id: "vector_indexer",
+      name: "Vector Indexer",
+      type: "indexer",
+      description: "Create vector index for dense retrieval.",
+      parameters: [
+        { 
+          id: "model", 
+          name: "Embedding Model", 
+          type: "string", 
+          defaultValue: "openai_embed_3_large",
+          description: "Embedding model to use for indexing."
+        },
+        { 
+          id: "dimension", 
+          name: "Vector Dimension", 
+          type: "number", 
+          defaultValue: 1536, 
+          min: 128, 
+          max: 4096, 
+          step: 1,
+          description: "Dimension of the embedding vectors."
+        },
+        { 
+          id: "similarity_metric", 
+          name: "Similarity Metric", 
+          type: "select", 
+          defaultValue: "cosine", 
+          options: ["cosine", "ip", "l2"],
+          description: "Metric to calculate similarity between vectors."
+        }
+      ]
+    }
+  ],
   generator: [
     {
       id: "openai_llm",
@@ -788,6 +839,95 @@ const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[]
   });
 };
 
+// Transform API indexer data to Module format
+const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[] => {
+  return apiIndexers.map(apiIndexer => {
+    // Try to find a static template for this index type
+    const staticTemplate = AVAILABLE_MODULES.indexer.find(i => i.id === apiIndexer.index_type);
+    
+    const parameters: ParameterDefinition[] = [];
+    const processedParamIds = new Set<string>();
+
+    // Add index_type parameter (always present for indexers)
+    parameters.push({
+      id: 'index_type',
+      name: 'Index Type',
+      type: 'string',
+      defaultValue: apiIndexer.index_type,
+      description: 'Type of index (vector, bm25, hybrid)'
+    });
+    processedParamIds.add('index_type');
+
+    // Add model parameter (always present for indexers)
+    parameters.push({
+      id: 'model',
+      name: 'Model',
+      type: 'string',
+      defaultValue: apiIndexer.model,
+      description: 'Model used for indexing'
+    });
+    processedParamIds.add('model');
+
+    // If we have a static template, use its parameter definitions as base for remaining params
+    if (staticTemplate) {
+      staticTemplate.parameters.forEach(staticParam => {
+        if (!processedParamIds.has(staticParam.id)) {
+          const apiValue = apiIndexer.params[staticParam.id];
+          parameters.push({
+            ...staticParam,
+            defaultValue: apiValue !== undefined ? apiValue : staticParam.defaultValue
+          });
+          processedParamIds.add(staticParam.id);
+        }
+      });
+    }
+
+    // Add any additional parameters from API that weren't processed yet
+    Object.entries(apiIndexer.params).forEach(([key, value]) => {
+      if (!processedParamIds.has(key)) {
+        // Special handling for certain parameter types
+        let paramType: ParameterType = inferParameterType(value);
+        let options: string[] | undefined = undefined;
+        
+        // Handle known parameter types
+        if (key === 'similarity_metric') {
+          paramType = 'select';
+          options = ['cosine', 'ip', 'l2'];
+        } else if (key === 'device') {
+          paramType = 'select';
+          options = ['cpu', 'cuda'];
+        } else if (key === 'input_type') {
+          paramType = 'select';
+          options = ['search_document', 'search_query', 'classification', 'clustering'];
+        }
+
+        parameters.push({
+          id: key,
+          name: formatParamName(key),
+          type: paramType,
+          defaultValue: value,
+          options: options,
+          description: `${formatParamName(key)} parameter`,
+          // Add sensible constraints for numeric parameters
+          ...(paramType === 'number' && key.includes('dimension') && { min: 128, max: 4096, step: 1 }),
+          ...(paramType === 'number' && key.includes('batch') && { min: 1, max: 500, step: 1 }),
+          ...(paramType === 'number' && (key.includes('size') || key.includes('length')) && { min: 1, max: 2048, step: 1 }),
+          ...(paramType === 'number' && key.includes('weight') && { min: 0.0, max: 1.0, step: 0.1 }),
+          ...(paramType === 'number' && (key === 'b' || key === 'k1' || key === 'epsilon') && { min: 0.0, max: 2.0, step: 0.01 })
+        });
+      }
+    });
+
+    return {
+      id: apiIndexer.id, // Use the UUID from API
+      name: apiIndexer.name,
+      description: apiIndexer.description || `${apiIndexer.index_type} indexer using ${apiIndexer.model}`,
+      type: 'indexer' as const,
+      parameters
+    };
+  });
+};
+
 function EvaluationInterface({
   ragConfigs,
   sources,
@@ -814,11 +954,11 @@ function EvaluationInterface({
   const [currentConfigDescription, setCurrentConfigDescription] = useState<string>("");
   const [selectedParser, setSelectedParser] = useState<string>("");
   const [selectedChunker, setSelectedChunker] = useState<string>("");
-  const [selectedRetriever, setSelectedRetriever] = useState<string>("");
+  const [selectedIndexer, setSelectedIndexer] = useState<string>(""); // Changed from 'selectedRetriever'
   // selectedGenerator removed from config creation - now only for evaluation
   const [parserParams, setParserParams] = useState<{ [key: string]: string | number | boolean }>({});
   const [chunkerParams, setChunkerParams] = useState<{ [key: string]: string | number | boolean }>({});
-  const [retrieverParams, setRetrieverParams] = useState<{ [key: string]: string | number | boolean }>({});
+  const [indexerParams, setIndexerParams] = useState<{ [key: string]: string | number | boolean }>({}); // Changed from 'retrieverParams'
 
   // API-fetched parsers state
   const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
@@ -829,6 +969,11 @@ function EvaluationInterface({
   const [apiFetchedChunkers, setApiFetchedChunkers] = useState<Module[]>([]);
   const [apiChunkersLoading, setApiChunkersLoading] = useState(true);
   const [apiChunkersError, setApiChunkersError] = useState<string | null>(null);
+
+  // API-fetched indexers state
+  const [apiFetchedIndexers, setApiFetchedIndexers] = useState<Module[]>([]);
+  const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
+  const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
 
   const currentRAGConfig = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
@@ -911,6 +1056,45 @@ function EvaluationInterface({
     fetchChunkers();
   }, []);
 
+  // Fetch indexers from API on component mount
+  useEffect(() => {
+    const fetchIndexers = async () => {
+      try {
+        setApiIndexersLoading(true);
+        setApiIndexersError(null);
+        
+        // Check if API_URL is configured
+        if (!API_URL) {
+          throw new Error('API_URL not configured');
+        }
+        
+        const response = await fetch(`${API_URL}/indexer/`, {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: ApiIndexerListResponse = await response.json();
+        const transformedIndexers = transformApiIndexersToModules(data.indexers);
+        setApiFetchedIndexers(transformedIndexers);
+      } catch (error) {
+        console.error('Failed to fetch indexers:', error);
+        setApiIndexersError(error instanceof Error ? error.message : 'Failed to fetch indexers');
+        // Fallback to static indexers if API fails
+        setApiFetchedIndexers(AVAILABLE_MODULES.indexer);
+      } finally {
+        setApiIndexersLoading(false);
+      }
+    };
+
+    fetchIndexers();
+  }, []);
+
   useEffect(() => {
     if (selectedRAGConfigId && activeTab === 'configure') {
       const configToLoad = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
@@ -924,8 +1108,8 @@ function EvaluationInterface({
         setSelectedChunker(configToLoad.chunker.moduleId);
         setChunkerParams({...configToLoad.chunker.parameterValues});
         
-        setSelectedRetriever(configToLoad.retriever.moduleId);
-        setRetrieverParams({...configToLoad.retriever.parameterValues});
+        setSelectedIndexer(configToLoad.indexer.moduleId); // Changed from 'retriever'
+        setIndexerParams({...configToLoad.indexer.parameterValues}); // Changed from 'retriever'
 
         // Generator is no longer part of RAG config
       } 
@@ -1080,11 +1264,13 @@ function EvaluationInterface({
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
     let modulesOfType: Module[];
     
-    // Use API-fetched modules for parsers and chunkers, static modules for others
+    // Use API-fetched modules for parsers, chunkers, and indexers, static modules for others
     if (moduleType === 'parser') {
       modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
     } else if (moduleType === 'chunker') {
       modulesOfType = apiFetchedChunkers.length > 0 ? apiFetchedChunkers : AVAILABLE_MODULES.chunker;
+    } else if (moduleType === 'indexer') {
+      modulesOfType = apiFetchedIndexers.length > 0 ? apiFetchedIndexers : AVAILABLE_MODULES.indexer;
     } else {
       modulesOfType = AVAILABLE_MODULES[moduleType];
     }
@@ -1106,9 +1292,9 @@ function EvaluationInterface({
     setSelectedChunker(moduleId);
     setChunkerParams(initializeDefaultParamsForModule('chunker', moduleId));
   };
-  const handleNewConfigRetrieverSelect = (moduleId: string) => {
-    setSelectedRetriever(moduleId);
-    setRetrieverParams(initializeDefaultParamsForModule('retriever', moduleId));
+  const handleNewConfigIndexerSelect = (moduleId: string) => { // Changed from 'handleNewConfigRetrieverSelect'
+    setSelectedIndexer(moduleId);
+    setIndexerParams(initializeDefaultParamsForModule('indexer', moduleId));
   };
 
   const handleNewConfigParamChange = (
@@ -1123,8 +1309,8 @@ function EvaluationInterface({
       case 'chunker':
         setChunkerParams(prev => ({ ...prev, [paramId]: value }));
         break;
-      case 'retriever':
-        setRetrieverParams(prev => ({ ...prev, [paramId]: value }));
+      case 'indexer': // Changed from 'retriever'
+        setIndexerParams(prev => ({ ...prev, [paramId]: value }));
         break;
       case 'generator':
         setGeneratorParams(prev => ({ ...prev, [paramId]: value }));
@@ -1133,8 +1319,8 @@ function EvaluationInterface({
   };
 
   const handleSaveConfig = () => {
-    if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever) {
-      alert("Please provide a configuration name and select a parser, chunker, and retriever.");
+    if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer) { // Changed from 'selectedRetriever'
+      alert("Please provide a configuration name and select a parser, chunker, and indexer."); // Changed from 'retriever'
       return;
     }
     if (ragConfigs.some(config => config.name === currentConfigName.trim())) {
@@ -1154,9 +1340,9 @@ function EvaluationInterface({
         moduleId: selectedChunker,
         parameterValues: chunkerParams,
       },
-      retriever: {
-        moduleId: selectedRetriever,
-        parameterValues: retrieverParams,
+      indexer: { // Changed from 'retriever'
+        moduleId: selectedIndexer,
+        parameterValues: indexerParams,
       },
       // generator removed from config
       availableMetrics: Object.values(ALL_METRICS),
@@ -1171,8 +1357,8 @@ function EvaluationInterface({
     setParserParams({});
     setSelectedChunker("");
     setChunkerParams({});
-    setSelectedRetriever("");
-    setRetrieverParams({});
+    setSelectedIndexer(""); // Changed from 'selectedRetriever'
+    setIndexerParams({}); // Changed from 'retrieverParams'
     // generator reset removed
   };
 
@@ -1196,6 +1382,10 @@ function EvaluationInterface({
       modulesOfType = apiFetchedChunkers.length > 0 ? apiFetchedChunkers : AVAILABLE_MODULES.chunker;
       isLoading = apiChunkersLoading;
       errorMessage = apiChunkersError;
+    } else if (moduleType === 'indexer') {
+      modulesOfType = apiFetchedIndexers.length > 0 ? apiFetchedIndexers : AVAILABLE_MODULES.indexer;
+      isLoading = apiIndexersLoading;
+      errorMessage = apiIndexersError;
     } else {
       modulesOfType = AVAILABLE_MODULES[moduleType];
     }
@@ -1210,12 +1400,12 @@ function EvaluationInterface({
         </div>
         
         {/* Loading state for API modules */}
-        {(moduleType === 'parser' || moduleType === 'chunker') && isLoading && (
+        {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && isLoading && (
           <div className="text-sm text-muted-foreground">Loading {moduleType}s from API...</div>
         )}
         
         {/* Error state for API modules */}
-        {(moduleType === 'parser' || moduleType === 'chunker') && errorMessage && (
+        {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && errorMessage && (
           <div className="text-sm text-red-600">
             Failed to load {moduleType}s: {errorMessage}. Using fallback options.
           </div>
@@ -1382,6 +1572,23 @@ function EvaluationInterface({
                 </div>
               )}
               
+              {/* Show loading state for indexers */}
+              {apiIndexersLoading && (
+                <div className="p-4 border rounded-md bg-blue-50 text-blue-800">
+                  <p className="text-sm">Loading available indexers from API...</p>
+                </div>
+              )}
+              
+              {/* Show error state for indexers */}
+              {apiIndexersError && (
+                <div className="p-4 border rounded-md bg-yellow-50 text-yellow-800">
+                  <p className="text-sm">
+                    Warning: Failed to load indexers from API ({apiIndexersError}). 
+                    Using fallback options. Some features may be limited.
+                  </p>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 <Label htmlFor="config-name">Configuration Name</Label>
                 <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
@@ -1393,12 +1600,12 @@ function EvaluationInterface({
               
               {renderModuleSelector('parser', selectedParser, handleNewConfigParserSelect, parserParams, handleNewConfigParamChange)}
               {renderModuleSelector('chunker', selectedChunker, handleNewConfigChunkerSelect, chunkerParams, handleNewConfigParamChange)}
-              {renderModuleSelector('retriever', selectedRetriever, handleNewConfigRetrieverSelect, retrieverParams, handleNewConfigParamChange)}
+              {renderModuleSelector('indexer', selectedIndexer, handleNewConfigIndexerSelect, indexerParams, handleNewConfigParamChange)}
 
               <Button className="w-full" onClick={handleSaveConfig} 
-                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever || apiParsersLoading || apiChunkersLoading}>
-                {(apiParsersLoading || apiChunkersLoading) ? "Loading Modules..." : "Save Preprocessing & Retrieval Configuration"}
-              </Button> 
+                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || apiParsersLoading || apiChunkersLoading || apiIndexersLoading}>
+                {(apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Save Preprocessing & Retrieval Configuration"}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1508,7 +1715,7 @@ function EvaluationInterface({
                             <div className="mt-2 space-y-1">
                                 <p className="text-xs"><span className="font-semibold">Parser:</span> {AVAILABLE_MODULES.parser.find(m => m.id === currentRAGConfig.parser.moduleId)?.name || 'N/A'}</p>
                                 <p className="text-xs"><span className="font-semibold">Chunker:</span> {AVAILABLE_MODULES.chunker.find(m => m.id === currentRAGConfig.chunker.moduleId)?.name || 'N/A'}</p>
-                                <p className="text-xs"><span className="font-semibold">Retriever:</span> {AVAILABLE_MODULES.retriever.find(m => m.id === currentRAGConfig.retriever.moduleId)?.name || 'N/A'}</p>
+                                <p className="text-xs"><span className="font-semibold">Indexer:</span> {AVAILABLE_MODULES.indexer.find(m => m.id === currentRAGConfig.indexer.moduleId)?.name || 'N/A'}</p>
                             </div>
                         </div>
                         <div className="pt-2 border-t">
@@ -1699,7 +1906,7 @@ export default function EvalPage() {
         description: "A simple AutoRAG configuration with basic modules.",
         parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
         chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
-        retriever: { moduleId: "bm25", parameterValues: { top_k: 5, bm25_tokenizer: "porter_stemmer" } },
+        indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 1536, similarity_metric: "cosine" } }, // Changed from 'retriever'
         // generator removed from config
         availableMetrics: [
           ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
@@ -1713,7 +1920,7 @@ export default function EvalPage() {
         description: "AutoRAG configuration using vector database retrieval.",
         parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
         chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
-        retriever: { moduleId: "vectordb", parameterValues: { top_k: 3, vectordb: "chroma", embedding_model: "OpenAI Embedding API", embedding_batch: 128, similarity_metric: "cosine" } },
+        indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_small", dimension: 1536, similarity_metric: "cosine" } }, // Changed from 'retriever'
         // generator removed from config
         availableMetrics: [
           ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
@@ -1727,7 +1934,7 @@ export default function EvalPage() {
         description: "AutoRAG configuration using hybrid retrieval with RRF.",
         parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
         chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
-        retriever: { moduleId: "hybrid_rrf", parameterValues: { top_k: 10, weight: 0.6 } },
+        indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 3072, similarity_metric: "cosine" } }, // Changed from 'retriever'
         // generator removed from config
         availableMetrics: [
           ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
