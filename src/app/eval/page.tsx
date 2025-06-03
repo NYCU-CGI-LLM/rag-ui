@@ -92,6 +92,28 @@ interface ApiIndexerListResponse {
   indexers: ApiIndexerEntry[];
 }
 
+// API Response Interfaces for Retriever Data
+interface ApiRetrieverEntry {
+  id: string;
+  name: string;
+  description?: string;
+  status: string;
+  library_id: string;
+  parser_id: string;
+  chunker_id: string;
+  indexer_id: string;
+  collection_name?: string;
+  top_k: number;
+  total_chunks?: number;
+  indexed_at?: string;
+  error_message?: string;
+}
+
+interface ApiRetrieverListResponse {
+  total: number;
+  retrievers: ApiRetrieverEntry[];
+}
+
 // New Type Definitions for RAG Configuration
 type ModuleType = 'parser' | 'chunker' | 'generator' | 'indexer'; // Removed 'retriever'
 type ParameterType = 'string' | 'number' | 'boolean' | 'select';
@@ -204,7 +226,7 @@ const ALL_METRICS: { [key: string]: Metric } = {
 const DEFAULT_LIBRARY_METRICS_OBJECTS: Metric[] = [
   ALL_METRICS.recall, 
   ALL_METRICS.precision, 
-  ALL_METRICS.response_time,
+  ALL_METRICS.f1,
 ];
 
 // OpenAI model token limits
@@ -243,7 +265,7 @@ const MAX_TOKEN_DICT: { [key: string]: number } = {
   "gpt-3.5-turbo-16k-0613": 16_385,
 };
 
-// Generator modules (not API-fetched yet)
+// Generator modules (based on chat page design)
 const GENERATOR_MODULES: Module[] = [
   {
     id: "openai_llm",
@@ -321,6 +343,111 @@ const GENERATOR_MODULES: Module[] = [
         max: 1.0, 
         step: 0.01,
         description: "Controls diversity via nucleus sampling."
+      }
+    ]
+  },
+  {
+    id: "vllm",
+    name: "vLLM",
+    type: "generator",
+    description: "Generate responses using vLLM for high-performance inference.",
+    parameters: [
+      { 
+        id: "llm", 
+        name: "LLM Model", 
+        type: "string", 
+        defaultValue: "meta-llama/Llama-2-7b-chat-hf",
+        description: "Model name or path for vLLM."
+      },
+      { 
+        id: "max_tokens", 
+        name: "Max Tokens", 
+        type: "number", 
+        defaultValue: 256, 
+        min: 1, 
+        max: 4096, 
+        step: 1,
+        description: "Maximum number of tokens to generate."
+      },
+      { 
+        id: "temperature", 
+        name: "Temperature", 
+        type: "number", 
+        defaultValue: 0.7, 
+        min: 0.0, 
+        max: 2.0, 
+        step: 0.1,
+        description: "Controls randomness in generation."
+      }
+    ]
+  },
+  {
+    id: "vllm_api",
+    name: "vLLM API",
+    type: "generator",
+    description: "Generate responses using vLLM API endpoint.",
+    parameters: [
+      { 
+        id: "llm", 
+        name: "LLM Model", 
+        type: "string", 
+        defaultValue: "meta-llama/Llama-2-7b-chat-hf",
+        description: "Model name for vLLM API."
+      },
+      { 
+        id: "max_tokens", 
+        name: "Max Tokens", 
+        type: "number", 
+        defaultValue: 256, 
+        min: 1, 
+        max: 4096, 
+        step: 1,
+        description: "Maximum number of tokens to generate."
+      },
+      { 
+        id: "temperature", 
+        name: "Temperature", 
+        type: "number", 
+        defaultValue: 0.7, 
+        min: 0.0, 
+        max: 2.0, 
+        step: 0.1,
+        description: "Controls randomness in generation."
+      }
+    ]
+  },
+  {
+    id: "llama_index_llm",
+    name: "LlamaIndex LLM",
+    type: "generator",
+    description: "Generate responses using LlamaIndex LLM framework.",
+    parameters: [
+      { 
+        id: "llm", 
+        name: "LLM Model", 
+        type: "string", 
+        defaultValue: "gpt-3.5-turbo",
+        description: "Model name for LlamaIndex LLM."
+      },
+      { 
+        id: "max_tokens", 
+        name: "Max Tokens", 
+        type: "number", 
+        defaultValue: 256, 
+        min: 1, 
+        max: 4096, 
+        step: 1,
+        description: "Maximum number of tokens to generate."
+      },
+      { 
+        id: "temperature", 
+        name: "Temperature", 
+        type: "number", 
+        defaultValue: 0.7, 
+        min: 0.0, 
+        max: 2.0, 
+        step: 0.1,
+        description: "Controls randomness in generation."
       }
     ]
   }
@@ -541,47 +668,15 @@ function EvaluationInterface({
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
 
   useEffect(() => {
-    if (!selectedSource) {
-      setDisplayableMetrics([]);
-      setSelectedMetrics([]);
-      return;
-    }
-
-    const sourceDetails = sources.find(s => s.id === selectedSource);
-    if (!sourceDetails || !sourceDetails.supported_metrics) {
-      if (sourceDetails && sourceDetails.type === 'library') {
-         let metricsToConsider = DEFAULT_LIBRARY_METRICS_OBJECTS;
-         if (selectedRAGConfigId) {
-            const ragConfigDetails = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
-            if (ragConfigDetails && ragConfigDetails.availableMetrics) {
-                const ragMetricIds = new Set(ragConfigDetails.availableMetrics.map(m => m.id));
-                metricsToConsider = metricsToConsider.filter(m => ragMetricIds.has(m.id));
-            } else {
-                metricsToConsider = [];
-            }
-         }
-         setDisplayableMetrics(metricsToConsider);
-      } else {
-        setDisplayableMetrics([]);
-      }
-      setSelectedMetrics([]);
-      return;
-    }
-
-    let metricsFromSource: Metric[] = sourceDetails.supported_metrics;
-
-    if (selectedRAGConfigId) {
-      const ragConfigDetails = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
-      if (ragConfigDetails && ragConfigDetails.availableMetrics) {
-        const ragMetricIds = new Set(ragConfigDetails.availableMetrics.map(m => m.id));
-        metricsFromSource = metricsFromSource.filter(m => ragMetricIds.has(m.id));
-      } else {
-        metricsFromSource = [];
-      }
-    }
+    const availableMetrics = getAvailableMetrics();
+    setDisplayableMetrics(availableMetrics);
+    setSelectedMetrics([]);
     
-    setDisplayableMetrics(metricsFromSource);
-    setSelectedMetrics([]); 
+    // Clear generator selection if not required
+    if (!isGeneratorRequired() && selectedGenerator) {
+      setSelectedGenerator("");
+      setGeneratorParams({});
+    }
   }, [selectedSource, selectedRAGConfigId, sources, ragConfigs]);
 
   const handleMetricSelection = (metricId: string) => {
@@ -593,7 +688,10 @@ function EvaluationInterface({
   };
 
   const startEvaluation = async () => {
-    if (!selectedRAGConfigId || !selectedSource || !selectedGenerator || !currentRAGConfig || selectedMetrics.length === 0) return;
+    if (!selectedRAGConfigId || !selectedSource || !currentRAGConfig || selectedMetrics.length === 0) return;
+    
+    // Check if generator is required and selected
+    if (isGeneratorRequired() && !selectedGenerator) return;
 
     setIsEvaluating(true);
 
@@ -682,6 +780,66 @@ function EvaluationInterface({
       return `Running for: ${formatDuration(duration)}`;
     }
     return null;
+  };
+
+  // Helper function to check if a source requires generator (has Generation metrics)
+  const sourceRequiresGenerator = (source: Source): boolean => {
+    if (!source.supported_metrics || source.supported_metrics.length === 0) {
+      // If no supported metrics specified, assume library type may need generator
+      return source.type === 'library';
+    }
+    // Check if any supported metrics are Generation category
+    return source.supported_metrics.some(metric => metric.category === 'Generation');
+  };
+
+  // Get the metrics that will be available for the current source/config combination
+  const getAvailableMetrics = (): Metric[] => {
+    if (!selectedSource) return [];
+    
+    const sourceDetails = sources.find(s => s.id === selectedSource);
+    if (!sourceDetails) return [];
+
+    if (!sourceDetails.supported_metrics || sourceDetails.supported_metrics.length === 0) {
+      if (sourceDetails.type === 'library') {
+        let metricsToConsider = DEFAULT_LIBRARY_METRICS_OBJECTS;
+        if (selectedRAGConfigId) {
+          const ragConfigDetails = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
+          if (ragConfigDetails && ragConfigDetails.availableMetrics) {
+            const ragMetricIds = new Set(ragConfigDetails.availableMetrics.map(m => m.id));
+            metricsToConsider = metricsToConsider.filter(m => ragMetricIds.has(m.id));
+          } else {
+            metricsToConsider = [];
+          }
+        }
+        return metricsToConsider;
+      } else {
+        return [];
+      }
+    }
+
+    let metricsFromSource: Metric[] = sourceDetails.supported_metrics;
+
+    if (selectedRAGConfigId) {
+      const ragConfigDetails = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
+      if (ragConfigDetails && ragConfigDetails.availableMetrics) {
+        const ragMetricIds = new Set(ragConfigDetails.availableMetrics.map(m => m.id));
+        metricsFromSource = metricsFromSource.filter(m => ragMetricIds.has(m.id));
+      } else {
+        metricsFromSource = [];
+      }
+    }
+    
+    return metricsFromSource;
+  };
+
+  // Check if generator is required for current selection
+  const isGeneratorRequired = (): boolean => {
+    if (!selectedSource) return false;
+    const sourceDetails = sources.find(s => s.id === selectedSource);
+    if (!sourceDetails) return false;
+    
+    const availableMetrics = getAvailableMetrics();
+    return availableMetrics.some(metric => metric.category === 'Generation');
   };
 
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
@@ -812,41 +970,65 @@ function EvaluationInterface({
                   />
                 )}
                 {param.type === 'number' && (
-                  <Input
-                    id={`${moduleType}-${param.id}`}
-                    type="number"
-                    value={currentParams[param.id] as number ?? ''}
-                    onChange={(e) => {
-                        const rawValue = e.target.value;
-                        if (rawValue === '') {
-                            onParamChange(moduleType, param.id, '');
-                        } else {
-                            const val = parseFloat(rawValue);
-                            if (!isNaN(val)) {
-                               onParamChange(moduleType, param.id, val);
+                  <>
+                    {(param.id === 'temperature' || param.id === 'top_p') ? (
+                      // Use simple range slider for temperature and top_p
+                      <>
+                        <input
+                          id={`${moduleType}-${param.id}`}
+                          type="range"
+                          min={param.min}
+                          max={param.max}
+                          step={param.step}
+                          value={currentParams[param.id] as number ?? param.defaultValue}
+                          onChange={(e) => onParamChange(moduleType, param.id, parseFloat(e.target.value))}
+                          className="w-full mt-1"
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <span>{param.min}</span>
+                          <span>{currentParams[param.id] ?? param.defaultValue}</span>
+                          <span>{param.max}</span>
+                        </div>
+                      </>
+                    ) : (
+                      // Use regular number input for other numeric parameters
+                      <Input
+                        id={`${moduleType}-${param.id}`}
+                        type="number"
+                        value={currentParams[param.id] as number ?? ''}
+                        onChange={(e) => {
+                            const rawValue = e.target.value;
+                            if (rawValue === '') {
+                                onParamChange(moduleType, param.id, '');
                             } else {
-                                // If parsing fails, but it's not empty, could keep old value or set to default
-                                // For now, let it be, or onParamChange(moduleType, param.id, param.defaultValue as number)
+                                const val = parseFloat(rawValue);
+                                if (!isNaN(val)) {
+                                   onParamChange(moduleType, param.id, val);
+                                } else {
+                                    // If parsing fails, but it's not empty, could keep old value or set to default
+                                    // For now, let it be, or onParamChange(moduleType, param.id, param.defaultValue as number)
+                                }
                             }
+                        }}
+                        onBlur={(e) => { 
+                            const rawValue = e.target.value;
+                            if (rawValue === '' || isNaN(parseFloat(rawValue))) {
+                                 // If empty or NaN on blur, revert to default value
+                                onParamChange(moduleType, param.id, param.defaultValue as number);
+                            }
+                        }}
+                        min={param.min}
+                        max={
+                          // Dynamic max for OpenAI LLM max_tokens based on selected model
+                          selectedModuleDetails?.id === 'openai_llm' && param.id === 'max_tokens' 
+                            ? MAX_TOKEN_DICT[currentParams['llm'] as string] || param.max
+                            : param.max
                         }
-                    }}
-                    onBlur={(e) => { 
-                        const rawValue = e.target.value;
-                        if (rawValue === '' || isNaN(parseFloat(rawValue))) {
-                             // If empty or NaN on blur, revert to default value
-                            onParamChange(moduleType, param.id, param.defaultValue as number);
-                        }
-                    }}
-                    min={param.min}
-                    max={
-                      // Dynamic max for OpenAI LLM max_tokens based on selected model
-                      selectedModuleDetails?.id === 'openai_llm' && param.id === 'max_tokens' 
-                        ? MAX_TOKEN_DICT[currentParams['llm'] as string] || param.max
-                        : param.max
-                    }
-                    step={param.step}
-                    placeholder={String(param.defaultValue)}
-                  />
+                        step={param.step}
+                        placeholder={String(param.defaultValue)}
+                      />
+                    )}
+                  </>
                 )}
                 {param.type === 'boolean' && (
                    <div className="flex items-center space-x-2 pt-1">
@@ -944,38 +1126,55 @@ function EvaluationInterface({
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="generator-eval">Generator</Label>
-                    <Select
-                      value={selectedGenerator}
-                      onValueChange={(value) => {
-                        setSelectedGenerator(value);
-                        setGeneratorParams(initializeDefaultParamsForModule('generator', value));
-                      }}
-                    >
-                      <SelectTrigger id="generator-eval">
-                        <SelectValue placeholder="Select generator" />
-                      </SelectTrigger>
-                      <SelectContent position="popper">
-                        {GENERATOR_MODULES.map((generator) => (
-                          <SelectItem key={generator.id} value={generator.id}>
-                            {generator.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {selectedGenerator && (
-                    <div className="p-4 border rounded-md bg-muted/20">
-                      <h4 className="text-sm font-medium mb-3">Generator Parameters</h4>
-                      {renderModuleSelector('generator', selectedGenerator, () => {}, generatorParams, handleNewConfigParamChange)}
+                {/* Generator section - only show if the selected source requires generation */}
+                {isGeneratorRequired() && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="generator-eval">Generator</Label>
+                      <Select
+                        value={selectedGenerator}
+                        onValueChange={(value) => {
+                          setSelectedGenerator(value);
+                          setGeneratorParams(initializeDefaultParamsForModule('generator', value));
+                        }}
+                      >
+                        <SelectTrigger id="generator-eval">
+                          <SelectValue placeholder="Select generator" />
+                        </SelectTrigger>
+                        <SelectContent position="popper">
+                          {GENERATOR_MODULES.map((generator) => (
+                            <SelectItem key={generator.id} value={generator.id}>
+                              {generator.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
-                </div>
 
-                {currentRAGConfig && currentSourceDetails && selectedGenerator && ( 
+                    {selectedGenerator && (
+                      <div className="p-4 border rounded-md bg-muted/20">
+                        <h4 className="text-sm font-medium mb-3">Generator Parameters</h4>
+                        {renderModuleSelector('generator', selectedGenerator, () => {}, generatorParams, handleNewConfigParamChange)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!isGeneratorRequired() && selectedSource && (
+                  <div className="p-4 border rounded-md bg-blue-50 dark:bg-blue-950/20">
+                    <div className="flex items-center space-x-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600 dark:text-blue-400">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="m9 12 2 2 4-4"/>
+                      </svg>
+                      <p className="text-sm text-blue-800 dark:text-blue-200">
+                        This source only requires retrieval evaluation - no generator needed.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {currentRAGConfig && currentSourceDetails && (isGeneratorRequired() ? selectedGenerator : true) && ( 
                   <Card className="bg-muted/50">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg">Evaluation Setup Details</CardTitle>
@@ -1000,22 +1199,30 @@ function EvaluationInterface({
                                 <p className="text-xs"><span className="font-semibold">Indexer:</span> {apiFetchedIndexers.find(m => m.id === currentRAGConfig.indexer.moduleId)?.name || 'N/A (API Error or not found)'}</p>
                             </div>
                         </div>
-                        <div className="pt-2 border-t">
-                            <p><span className="font-semibold">Generator:</span> {GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
-                            <p className="text-xs text-muted-foreground">{GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.description || ''}</p>
-                        </div>
+                        {isGeneratorRequired() && selectedGenerator && (
+                          <div className="pt-2 border-t">
+                              <p><span className="font-semibold">Generator:</span> {GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
+                              <p className="text-xs text-muted-foreground">{GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.description || ''}</p>
+                          </div>
+                        )}
+                        {!isGeneratorRequired() && (
+                          <div className="pt-2 border-t">
+                              <p><span className="font-semibold">Evaluation Type:</span> Retrieval Only</p>
+                              <p className="text-xs text-muted-foreground">This evaluation will focus on retrieval metrics without generation.</p>
+                          </div>
+                        )}
                     </CardContent>
                   </Card>
                 )}
 
-                {currentSourceDetails && currentRAGConfig && selectedGenerator && ( 
+                {currentSourceDetails && currentRAGConfig && (isGeneratorRequired() ? selectedGenerator : true) && ( 
                   <div className="space-y-3 pt-3">
                     <Label className="text-base font-medium">Select Metrics to Evaluate</Label>
                     <p className="text-xs text-muted-foreground">
                       {selectedSource && !selectedRAGConfigId && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
                        selectedSource && selectedRAGConfigId && currentSourceDetails && currentRAGConfig ? `Common metrics for ${currentSourceDetails.name} and ${currentRAGConfig.name}:` : 
                        !selectedSource && selectedRAGConfigId && currentRAGConfig ? `Metrics available in ${currentRAGConfig.name}:` : 
-                       "Select a Source, Preprocessing & Retrieval Config, and Generator to see available metrics."}
+                       `Select a Source${isGeneratorRequired() ? ', Preprocessing & Retrieval Config, and Generator' : ' and Preprocessing & Retrieval Config'} to see available metrics.`}
                     </p>
                     {displayableMetrics.length > 0 ? (
                       ['Retrieval', 'Retrieval Token', 'Generation'].map(category => {
@@ -1088,7 +1295,7 @@ function EvaluationInterface({
                 <Button
                   className="w-full pt-2"
                   onClick={startEvaluation}
-                  disabled={!selectedRAGConfigId || !selectedSource || !selectedGenerator || selectedMetrics.length === 0 || isEvaluating} 
+                  disabled={!selectedRAGConfigId || !selectedSource || (isGeneratorRequired() && !selectedGenerator) || selectedMetrics.length === 0 || isEvaluating} 
                 >
                   {isEvaluating ? "Evaluating..." : "Start Evaluation & View Results"}
                 </Button>
@@ -1178,166 +1385,185 @@ function EvaluationInterface({
 export default function EvalPage() {
   const [ragConfigs, setRagConfigs] = useState<RAGConfig[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(true);
+  const [isLoadingConfigs, setIsLoadingConfigs] = useState(true);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [configsError, setConfigsError] = useState<string | null>(null);
   const router = useRouter();
 
+  // Fetch libraries from API as sources
   useEffect(() => {
-    const storedRagConfigs = localStorage.getItem('ragConfigs');
-    const storedSources = localStorage.getItem('sources');
-
-    if (storedRagConfigs) {
-      setRagConfigs(JSON.parse(storedRagConfigs));
-    } else {
-      const demoConfigs: RAGConfig[] = [
-        {
-          id: "rag1_basic_autorag",
-          name: "Basic AutoRAG",
-          description: "A simple AutoRAG configuration with basic modules.",
-          parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-          chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
-          indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 1536, similarity_metric: "cosine" } },
-          availableMetrics: [
-            ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
-            ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
-            ALL_METRICS.response_time,
-          ],
-        },
-        {
-          id: "rag2_vector_autorag",
-          name: "Vector AutoRAG",
-          description: "AutoRAG configuration using vector database retrieval.",
-          parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-          chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
-          indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_small", dimension: 1536, similarity_metric: "cosine" } },
-          availableMetrics: [
-            ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
-            ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
-            ALL_METRICS.geval_coherence, ALL_METRICS.geval_consistency, ALL_METRICS.geval_fluency, ALL_METRICS.geval_relevance,
-          ],
-        },
-        {
-          id: "rag3_hybrid_autorag",
-          name: "Hybrid AutoRAG",
-          description: "AutoRAG configuration using hybrid retrieval with RRF.",
-          parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-          chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
-          indexer: { moduleId: "vector_indexer", parameterValues: { model: "openai_embed_3_large", dimension: 3072, similarity_metric: "cosine" } },
-          availableMetrics: [
-            ALL_METRICS.recall, ALL_METRICS.precision, ALL_METRICS.f1,
-            ALL_METRICS.bleu, ALL_METRICS.meteor, ALL_METRICS.rouge, ALL_METRICS.sem_score, ALL_METRICS.bert_score,
-            ALL_METRICS.geval_coherence, ALL_METRICS.geval_consistency, ALL_METRICS.geval_fluency, ALL_METRICS.geval_relevance,
-            ALL_METRICS.overall_quality_score, ALL_METRICS.groundedness,
-          ],
-        },
-      ];
-      setRagConfigs(demoConfigs);
-      localStorage.setItem('ragConfigs', JSON.stringify(demoConfigs));
-    }
-
-    if (storedSources) {
-      setSources(JSON.parse(storedSources));
-    } else {
-      const demoSystemBenchmarks: Source[] = [
-        {
-          id: "longbench_hotpotqa",
-          name: "LongBench/HotpotQA",
-          description: "Question answering over multiple supporting documents, requiring reasoning.",
-          supported_metrics: [
+    const fetchSources = async () => {
+      try {
+        setIsLoadingSources(true);
+        setSourcesError(null);
+        if (!API_URL) throw new Error('API_URL not configured');
+        
+        const response = await fetch(`${API_URL}/library/`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const libraries = await response.json();
+        
+        // Transform library data to sources format
+        const sourcesFromLibraries: Source[] = libraries.map((lib: any) => ({
+          id: lib.id,
+          name: lib.library_name,
+          description: lib.description || '',
+          type: 'library' as const,
+          supported_metrics: DEFAULT_LIBRARY_METRICS_OBJECTS,
+        }));
+        
+        // Add some example benchmark sources for demonstration
+        const benchmarkSources: Source[] = [
+          {
+            id: 'benchmark_retrieval_only',
+            name: 'MS MARCO Retrieval',
+            description: 'Microsoft Machine Reading Comprehension - Retrieval evaluation only',
+            type: 'benchmark' as const,
+            supported_metrics: [
+              ALL_METRICS.recall,
+              ALL_METRICS.precision,
+              ALL_METRICS.f1,
+              ALL_METRICS.map,
+              ALL_METRICS.mrr,
+              ALL_METRICS.ndcg,
+            ],
+          },
+          {
+            id: 'benchmark_full_rag',
+            name: 'Natural Questions (Full RAG)',
+            description: 'Natural Questions dataset with retrieval and generation evaluation',
+            type: 'benchmark' as const,
+            supported_metrics: [
+              ALL_METRICS.recall,
+              ALL_METRICS.precision,
+              ALL_METRICS.f1,
+              ALL_METRICS.bleu,
+              ALL_METRICS.rouge,
               ALL_METRICS.exact_match,
               ALL_METRICS.answer_f1_score,
-              ALL_METRICS.answer_recall,
-              ALL_METRICS.precision,
-              ALL_METRICS.recall,
-          ],
-          type: 'benchmark' as const
-        },
-        {
-          id: "longbench_narrativeqa",
-          name: "LongBench/NarrativeQA",
-          description: "Question answering based on stories or books, requiring understanding of narratives.",
-          supported_metrics: [
-              ALL_METRICS.rouge,
-              ALL_METRICS.bleu,
-              ALL_METRICS.meteor,
-              ALL_METRICS.bert_score,
-          ],
-          type: 'benchmark' as const
-        },
-        {
-          id: "techqa",
-          name: "TechQA",
-          description: "Technical question answering, often involving specialized vocabulary and concepts.",
-          supported_metrics: [
-              ALL_METRICS.precision,
-              ALL_METRICS.recall,
-          ],
-          type: 'benchmark' as const
-        },
-        {
-          id: "emanual",
-          name: "E-manual",
-          description: "Question answering and information retrieval from electronic manuals.",
-          supported_metrics: [
-              ALL_METRICS.recall,
-              ALL_METRICS.precision,
-          ],
-          type: 'benchmark' as const
-        },
-      ];
-      const demoUserLibraries: LibraryStub[] = [
-        {
-          id: "tech_docs",
-          name: "Technical Documentation", 
-          description: "Technical manuals and API documentation for eval"
-        },
-        {
-          id: "research_papers", 
-          name: "Research Papers", 
-          description: "Academic papers and research notes for eval"
-        },
-      ];
-      const librarySources: Source[] = demoUserLibraries.map(lib => ({
-        ...lib,
-        id: `lib_${lib.id}`,
-        type: 'library',
-        supported_metrics: DEFAULT_LIBRARY_METRICS_OBJECTS,
-      }));
-      const allSources = [...demoSystemBenchmarks, ...librarySources];
-      setSources(allSources);
-      localStorage.setItem('sources', JSON.stringify(allSources));
-    }
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'ragConfigs' && event.newValue) {
-        setRagConfigs(JSON.parse(event.newValue));
-      }
-      if (event.key === 'sources' && event.newValue) {
-        setSources(JSON.parse(event.newValue));
+            ],
+          },
+        ];
+        
+        setSources([...sourcesFromLibraries, ...benchmarkSources]);
+      } catch (error) {
+        console.error('Failed to fetch libraries:', error);
+        setSourcesError(error instanceof Error ? error.message : 'Failed to fetch libraries');
+        setSources([]);
+      } finally {
+        setIsLoadingSources(false);
       }
     };
+    
+    fetchSources();
+  }, []);
 
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
+  // Fetch retriever configs from API as RAG configs
+  useEffect(() => {
+    const fetchRAGConfigs = async () => {
+      try {
+        setIsLoadingConfigs(true);
+        setConfigsError(null);
+        if (!API_URL) throw new Error('API_URL not configured');
+        
+        const response = await fetch(`${API_URL}/retriever/`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data: ApiRetrieverListResponse = await response.json();
+        
+        // Transform API retriever data to RAGConfig format
+        const configsFromAPI: RAGConfig[] = data.retrievers.map((retriever: ApiRetrieverEntry) => ({
+          id: retriever.id,
+          name: retriever.name,
+          description: retriever.description || '',
+          parser: { 
+            moduleId: retriever.parser_id, 
+            parameterValues: {} 
+          },
+          chunker: { 
+            moduleId: retriever.chunker_id, 
+            parameterValues: {} 
+          },
+          indexer: { 
+            moduleId: retriever.indexer_id, 
+            parameterValues: {} 
+          },
+          availableMetrics: [
+            ALL_METRICS.recall, 
+            ALL_METRICS.precision, 
+            ALL_METRICS.f1,
+            ALL_METRICS.bleu, 
+            ALL_METRICS.meteor, 
+            ALL_METRICS.rouge, 
+            ALL_METRICS.response_time,
+          ],
+        }));
+        
+        setRagConfigs(configsFromAPI);
+      } catch (error) {
+        console.error('Failed to fetch retriever configs:', error);
+        setConfigsError(error instanceof Error ? error.message : 'Failed to fetch retriever configs');
+        setRagConfigs([]);
+      } finally {
+        setIsLoadingConfigs(false);
+      }
     };
+    
+    fetchRAGConfigs();
   }, []);
 
   return (
     <PageLayout>
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold">RAG Evaluation</h1>
-            <p className="text-muted-foreground">
-              Evaluate RAG pipelines on standardized sources. Configure pipelines on a separate page.
-            </p>
-          </div>
-          <Button onClick={() => router.push('/eval/configure')}>
-            Configure RAG Pipelines
-          </Button>
+        <div>
+          <h1 className="text-2xl font-bold">RAG Evaluation</h1>
+          <p className="text-muted-foreground">
+            Evaluate RAG pipelines on standardized sources.
+          </p>
         </div>
 
-        <EvaluationInterface ragConfigs={ragConfigs} sources={sources} />
+        {/* Loading and Error States */}
+        {(isLoadingSources || isLoadingConfigs) && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center">
+                <p className="text-muted-foreground">Loading data from API...</p>
+                {isLoadingSources && <p className="text-sm text-muted-foreground">• Loading libraries...</p>}
+                {isLoadingConfigs && <p className="text-sm text-muted-foreground">• Loading retriever configurations...</p>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {(sourcesError || configsError) && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center space-y-2">
+                <p className="text-red-600 font-medium">Error loading data from API</p>
+                {sourcesError && <p className="text-sm text-red-600">Sources: {sourcesError}</p>}
+                {configsError && <p className="text-sm text-red-600">Configurations: {configsError}</p>}
+                <p className="text-sm text-muted-foreground">Please check your API connection and try again.</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!isLoadingSources && !isLoadingConfigs && !sourcesError && !configsError && sources.length === 0 && ragConfigs.length === 0 && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center space-y-2">
+                <p className="text-muted-foreground">No data available</p>
+                <p className="text-sm text-muted-foreground">No libraries or retriever configurations found. Create some configurations first.</p>
+                <Button onClick={() => router.push('/configure')} className="mt-4">
+                  Create Configuration
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!isLoadingSources && !isLoadingConfigs && (sources.length > 0 || ragConfigs.length > 0) && (
+          <EvaluationInterface ragConfigs={ragConfigs} sources={sources} />
+        )}
       </div>
     </PageLayout>
   );
