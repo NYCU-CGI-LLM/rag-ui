@@ -92,7 +92,7 @@ interface ApiIndexerListResponse {
 }
 
 // New Type Definitions for RAG Configuration
-type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator' | 'indexer';
+type ModuleType = 'parser' | 'chunker' | 'generator' | 'indexer'; // Removed 'retriever'
 type ParameterType = 'string' | 'number' | 'boolean' | 'select';
 
 interface ParameterDefinition {
@@ -242,457 +242,88 @@ const MAX_TOKEN_DICT: { [key: string]: number } = {
   "gpt-3.5-turbo-16k-0613": 16_385,
 };
 
-// Sample Available Modules - Updated to match AutoRAG actual configurations
-const AVAILABLE_MODULES: { [key in ModuleType]: Module[] } = {
-  parser: [
-    { 
-      id: "langchain_parse", 
-      name: "LangChain Parse", 
-      type: "parser",
-      description: "Parse documents using LangChain parsers.",
-      parameters: [
-        { 
-          id: "parse_method", 
-          name: "Parse Method", 
-          type: "select", 
-          defaultValue: "pdfminer", 
-          options: ["pdfminer"],
-          description: "Method to parse PDF documents." 
-        }
-      ]
-    }
-  ],
-  chunker: [
-    {
-      id: "llama_index_chunk",
-      name: "LlamaIndex Chunk",
-      type: "chunker",
-      description: "Chunk documents using LlamaIndex chunking methods.",
-      parameters: [
-        { 
-          id: "chunk_method", 
-          name: "Chunk Method", 
-          type: "select", 
-          defaultValue: "Token", 
-          options: ["Token"],
-          description: "Method to chunk the documents."
-        },
-        { 
-          id: "chunk_size", 
-          name: "Chunk Size", 
-          type: "number", 
-          defaultValue: 1024, 
-          min: 100, 
-          max: 4096, 
-          step: 1,
-          description: "Size of each chunk in tokens."
-        },
-        { 
-          id: "chunk_overlap", 
-          name: "Chunk Overlap", 
-          type: "number", 
-          defaultValue: 24, 
-          min: 0, 
-          max: 512, 
-          step: 1,
-          description: "Number of overlapping tokens between chunks."
-        },
-        { 
-          id: "add_file_name", 
-          name: "Add File Name", 
-          type: "select", 
-          defaultValue: "en", 
-          options: ["en"],
-          description: "Language setting for file name addition."
-        }
-      ]
-    }
-  ],
-  retriever: [
-    {
-      id: "bm25",
-      name: "BM25",
-      type: "retriever",
-      description: "Keyword-based sparse retriever using BM25 algorithm.",
-      parameters: [
-        { 
-          id: "top_k", 
-          name: "Top K", 
-          type: "number", 
-          defaultValue: 5, 
-          min: 1, 
-          max: 50, 
-          step: 1,
-          description: "Number of top documents to retrieve."
-        },
-        { 
-          id: "bm25_tokenizer", 
-          name: "BM25 Tokenizer", 
-          type: "select", 
-          defaultValue: "porter_stemmer", 
-          options: [
-            "porter_stemmer", 
-            "space", 
-            "ko_kiwi", 
-            "ko_kkma", 
-            "ko_okt", 
-            "sudachipy", 
-            "bge-m3", 
-            "bert-base-chinese"
-          ],
-          description: "Tokenizer for BM25 processing."
-        }
-      ]
-    },
-    {
-      id: "vectordb",
-      name: "Vector DB",
-      type: "retriever",
-      description: "Dense retriever using vector embeddings and vector database.",
-      parameters: [
-        { 
-          id: "top_k", 
-          name: "Top K", 
-          type: "number", 
-          defaultValue: 5, 
-          min: 1, 
-          max: 50, 
-          step: 1,
-          description: "Number of top documents to retrieve."
-        },
-        { 
-          id: "vectordb", 
-          name: "Vector Database", 
-          type: "select", 
-          defaultValue: "chroma", 
-          options: ["chroma", "FAISS", "pinecone"],
-          description: "Vector database to use for storage and retrieval."
-        },
-        { 
-          id: "embedding_model", 
-          name: "Embedding Model", 
-          type: "select", 
-          defaultValue: "OpenAI Embedding API", 
-          options: ["OpenAI Embedding API", "HuggingFace embedding models", "LlamaIndex"],
-          description: "Model to generate embeddings."
-        },
-        { 
-          id: "embedding_batch", 
-          name: "Embedding Batch Size", 
-          type: "number", 
-          defaultValue: 128, 
-          min: 1, 
-          max: 1024, 
-          step: 1,
-          description: "Batch size for embedding generation."
-        },
-        { 
-          id: "similarity_metric", 
-          name: "Similarity Metric", 
-          type: "select", 
-          defaultValue: "cosine", 
-          options: ["cosine", "ip", "l2"],
-          description: "Metric to calculate similarity between vectors."
-        }
-      ]
-    },
-    {
-      id: "hybrid_rrf",
-      name: "Hybrid RRF",
-      type: "retriever",
-      description: "Hybrid retriever using Reciprocal Rank Fusion.",
-      parameters: [
-        { 
-          id: "top_k", 
-          name: "Top K", 
-          type: "number", 
-          defaultValue: 5, 
-          min: 1, 
-          max: 50, 
-          step: 1,
-          description: "Number of top documents to retrieve."
-        },
-        { 
-          id: "weight", 
-          name: "Weight (Semantic/Lexical)", 
-          type: "number", 
-          defaultValue: 0.5, 
-          min: 0.0, 
-          max: 1.0, 
-          step: 0.1,
-          description: "Weight balance between semantic and lexical retrieval."
-        }
-      ]
-    },
-    {
-      id: "hybrid_cc",
-      name: "Hybrid CC",
-      type: "retriever",
-      description: "Hybrid retriever using Convex Combination.",
-      parameters: [
-        { 
-          id: "normalize_method", 
-          name: "Normalize Method", 
-          type: "select", 
-          defaultValue: "mm", 
-          options: ["mm", "tmm", "z", "dbsf"],
-          description: "Method to normalize scores."
-        },
-        { 
-          id: "semantic_theoretical_min_value", 
-          name: "Semantic Theoretical Min Value", 
-          type: "number", 
-          defaultValue: 0.0, 
-          min: 0.0, 
-          max: 1.0, 
-          step: 0.01,
-          description: "Theoretical minimum value for semantic scores (used with tmm)."
-        },
-        { 
-          id: "lexical_theoretical_min_value", 
-          name: "Lexical Theoretical Min Value", 
-          type: "number", 
-          defaultValue: 0.0, 
-          min: 0.0, 
-          max: 1.0, 
-          step: 0.01,
-          description: "Theoretical minimum value for lexical scores (used with tmm)."
-        },
-        { 
-          id: "weight", 
-          name: "Weight (Semantic/Lexical)", 
-          type: "number", 
-          defaultValue: 0.5, 
-          min: 0.0, 
-          max: 1.0, 
-          step: 0.1,
-          description: "Weight balance between semantic and lexical retrieval."
-        }
-      ]
-    }
-  ],
-  indexer: [
-    {
-      id: "vector_indexer",
-      name: "Vector Indexer",
-      type: "indexer",
-      description: "Create vector index for dense retrieval.",
-      parameters: [
-        { 
-          id: "model", 
-          name: "Embedding Model", 
-          type: "string", 
-          defaultValue: "openai_embed_3_large",
-          description: "Embedding model to use for indexing."
-        },
-        { 
-          id: "dimension", 
-          name: "Vector Dimension", 
-          type: "number", 
-          defaultValue: 1536, 
-          min: 128, 
-          max: 4096, 
-          step: 1,
-          description: "Dimension of the embedding vectors."
-        },
-        { 
-          id: "similarity_metric", 
-          name: "Similarity Metric", 
-          type: "select", 
-          defaultValue: "cosine", 
-          options: ["cosine", "ip", "l2"],
-          description: "Metric to calculate similarity between vectors."
-        }
-      ]
-    }
-  ],
-  generator: [
-    {
-      id: "openai_llm",
-      name: "OpenAI LLM",
-      type: "generator",
-      description: "Generate responses using OpenAI language models.",
-      parameters: [
-        { 
-          id: "llm", 
-          name: "LLM Model", 
-          type: "select", 
-          defaultValue: "gpt-4o-mini", 
-          options: [
-            "gpt-4.5-preview",
-            "gpt-4.5-preview-2025-02-27",
-            "o1",
-            "o1-preview",
-            "o1-preview-2024-09-12",
-            "o1-mini",
-            "o1-mini-2024-09-12",
-            "o3-mini",
-            "gpt-4o-mini",
-            "gpt-4o-mini-2024-07-18",
-            "gpt-4o",
-            "gpt-4o-2024-08-06",
-            "gpt-4o-2024-05-13",
-            "chatgpt-4o-latest",
-            "gpt-4-turbo",
-            "gpt-4-turbo-2024-04-09",
-            "gpt-4-turbo-preview",
-            "gpt-4-0125-preview",
-            "gpt-4-1106-preview",
-            "gpt-4-vision-preview",
-            "gpt-4-1106-vision-preview",
-            "gpt-4",
-            "gpt-4-0613",
-            "gpt-4-32k",
-            "gpt-4-32k-0613",
-            "gpt-3.5-turbo-0125",
-            "gpt-3.5-turbo",
-            "gpt-3.5-turbo-1106",
-            "gpt-3.5-turbo-instruct",
-            "gpt-3.5-turbo-16k",
-            "gpt-3.5-turbo-0613",
-            "gpt-3.5-turbo-16k-0613"
-          ],
-          description: "OpenAI model to use for generation."
-        },
-        { 
-          id: "max_tokens", 
-          name: "Max Tokens", 
-          type: "number", 
-          defaultValue: 4096, 
-          min: 1, 
-          max: 200000, 
-          step: 1,
-          description: "Maximum number of tokens to generate. The actual limit will be dynamically set based on the selected model."
-        },
-        { 
-          id: "temperature", 
-          name: "Temperature", 
-          type: "number", 
-          defaultValue: 0.7, 
-          min: 0.0, 
-          max: 2.0, 
-          step: 0.1,
-          description: "Controls randomness in generation."
-        },
-        { 
-          id: "top_p", 
-          name: "Top P", 
-          type: "number", 
-          defaultValue: 1.0, 
-          min: 0.0, 
-          max: 1.0, 
-          step: 0.01,
-          description: "Controls diversity via nucleus sampling."
-        }
-      ]
-    },
-    {
-      id: "vllm",
-      name: "vLLM",
-      type: "generator",
-      description: "Generate responses using vLLM for efficient inference.",
-      parameters: [
-        { 
-          id: "llm", 
-          name: "LLM Model", 
-          type: "string", 
-          defaultValue: "meta-llama/Llama-2-7b-chat-hf",
-          description: "Model name or path for vLLM."
-        },
-        { 
-          id: "max_tokens", 
-          name: "Max Tokens", 
-          type: "number", 
-          defaultValue: 256, 
-          min: 1, 
-          max: 4096, 
-          step: 1,
-          description: "Maximum number of tokens to generate."
-        },
-        { 
-          id: "temperature", 
-          name: "Temperature", 
-          type: "number", 
-          defaultValue: 0.7, 
-          min: 0.0, 
-          max: 2.0, 
-          step: 0.1,
-          description: "Controls randomness in generation."
-        }
-      ]
-    },
-    {
-      id: "vllm_api",
-      name: "vLLM API",
-      type: "generator",
-      description: "Generate responses using vLLM API endpoint.",
-      parameters: [
-        { 
-          id: "llm", 
-          name: "LLM Model", 
-          type: "string", 
-          defaultValue: "meta-llama/Llama-2-7b-chat-hf",
-          description: "Model name for vLLM API."
-        },
-        { 
-          id: "max_tokens", 
-          name: "Max Tokens", 
-          type: "number", 
-          defaultValue: 256, 
-          min: 1, 
-          max: 4096, 
-          step: 1,
-          description: "Maximum number of tokens to generate."
-        },
-        { 
-          id: "temperature", 
-          name: "Temperature", 
-          type: "number", 
-          defaultValue: 0.7, 
-          min: 0.0, 
-          max: 2.0, 
-          step: 0.1,
-          description: "Controls randomness in generation."
-        }
-      ]
-    },
-    {
-      id: "llama_index_llm",
-      name: "LlamaIndex LLM",
-      type: "generator",
-      description: "Generate responses using LlamaIndex LLM integration.",
-      parameters: [
-        { 
-          id: "llm", 
-          name: "LLM Model", 
-          type: "string", 
-          defaultValue: "gpt-3.5-turbo",
-          description: "Model name for LlamaIndex LLM."
-        },
-        { 
-          id: "max_tokens", 
-          name: "Max Tokens", 
-          type: "number", 
-          defaultValue: 256, 
-          min: 1, 
-          max: 4096, 
-          step: 1,
-          description: "Maximum number of tokens to generate."
-        },
-        { 
-          id: "temperature", 
-          name: "Temperature", 
-          type: "number", 
-          defaultValue: 0.7, 
-          min: 0.0, 
-          max: 2.0, 
-          step: 0.1,
-          description: "Controls randomness in generation."
-        }
-      ]
-    }
-  ]
-};
+// Generator modules (not API-fetched yet)
+const GENERATOR_MODULES: Module[] = [
+  {
+    id: "openai_llm",
+    name: "OpenAI LLM",
+    type: "generator",
+    description: "Generate responses using OpenAI language models.",
+    parameters: [
+      { 
+        id: "llm", 
+        name: "LLM Model", 
+        type: "select", 
+        defaultValue: "gpt-4o-mini", 
+        options: [
+          "gpt-4.5-preview",
+          "gpt-4.5-preview-2025-02-27",
+          "o1",
+          "o1-preview",
+          "o1-preview-2024-09-12",
+          "o1-mini",
+          "o1-mini-2024-09-12",
+          "o3-mini",
+          "gpt-4o-mini",
+          "gpt-4o-mini-2024-07-18",
+          "gpt-4o",
+          "gpt-4o-2024-08-06",
+          "gpt-4o-2024-05-13",
+          "chatgpt-4o-latest",
+          "gpt-4-turbo",
+          "gpt-4-turbo-2024-04-09",
+          "gpt-4-turbo-preview",
+          "gpt-4-0125-preview",
+          "gpt-4-1106-preview",
+          "gpt-4-vision-preview",
+          "gpt-4-1106-vision-preview",
+          "gpt-4",
+          "gpt-4-0613",
+          "gpt-4-32k",
+          "gpt-4-32k-0613",
+          "gpt-3.5-turbo-0125",
+          "gpt-3.5-turbo",
+          "gpt-3.5-turbo-1106",
+          "gpt-3.5-turbo-instruct",
+          "gpt-3.5-turbo-16k",
+          "gpt-3.5-turbo-0613",
+          "gpt-3.5-turbo-16k-0613"
+        ],
+        description: "OpenAI model to use for generation."
+      },
+      { 
+        id: "max_tokens", 
+        name: "Max Tokens", 
+        type: "number", 
+        defaultValue: 4096, 
+        min: 1, 
+        max: 200000, 
+        step: 1,
+        description: "Maximum number of tokens to generate. The actual limit will be dynamically set based on the selected model."
+      },
+      { 
+        id: "temperature", 
+        name: "Temperature", 
+        type: "number", 
+        defaultValue: 0.7, 
+        min: 0.0, 
+        max: 2.0, 
+        step: 0.1,
+        description: "Controls randomness in generation."
+      },
+      { 
+        id: "top_p", 
+        name: "Top P", 
+        type: "number", 
+        defaultValue: 1.0, 
+        min: 0.0, 
+        max: 1.0, 
+        step: 0.01,
+        description: "Controls diversity via nucleus sampling."
+      }
+    ]
+  }
+];
 
 // Utility function to format parameter names from snake_case to Title Case
 const formatParamName = (id: string): string => {
@@ -712,35 +343,17 @@ const inferParameterType = (value: string | number | boolean): ParameterType => 
 // Transform API parser data to Module format
 const transformApiParsersToModules = (apiParsers: ApiParserEntry[]): Module[] => {
   return apiParsers.map(apiParser => {
-    // Try to find a static template for this module type
-    const staticTemplate = AVAILABLE_MODULES.parser.find(p => p.id === apiParser.module_type);
-    
     const parameters: ParameterDefinition[] = [];
-    const processedParamIds = new Set<string>();
 
-    // If we have a static template, use its parameter definitions as base
-    if (staticTemplate) {
-      staticTemplate.parameters.forEach(staticParam => {
-        const apiValue = apiParser.params[staticParam.id];
-        parameters.push({
-          ...staticParam,
-          defaultValue: apiValue !== undefined ? apiValue : staticParam.defaultValue
-        });
-        processedParamIds.add(staticParam.id);
-      });
-    }
-
-    // Add any additional parameters from API that weren't in the static template
+    // Add parameters from API
     Object.entries(apiParser.params).forEach(([key, value]) => {
-      if (!processedParamIds.has(key)) {
-        parameters.push({
-          id: key,
-          name: formatParamName(key),
-          type: inferParameterType(value),
-          defaultValue: value,
-          description: `${formatParamName(key)} parameter`
-        });
-      }
+      parameters.push({
+        id: key,
+        name: formatParamName(key),
+        type: inferParameterType(value),
+        defaultValue: value,
+        description: `${formatParamName(key)} parameter`
+      });
     });
 
     return {
@@ -756,11 +369,7 @@ const transformApiParsersToModules = (apiParsers: ApiParserEntry[]): Module[] =>
 // Transform API chunker data to Module format
 const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[] => {
   return apiChunkers.map(apiChunker => {
-    // Try to find a static template for this module type
-    const staticTemplate = AVAILABLE_MODULES.chunker.find(c => c.id === apiChunker.module_type);
-    
     const parameters: ParameterDefinition[] = [];
-    const processedParamIds = new Set<string>();
 
     // Add chunk_method parameter (always present for chunkers)
     parameters.push({
@@ -770,7 +379,6 @@ const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[]
       defaultValue: apiChunker.chunk_method,
       description: 'Method used for chunking'
     });
-    processedParamIds.add('chunk_method');
 
     // Add chunk_size parameter if available
     if (apiChunker.chunk_size !== null) {
@@ -784,7 +392,6 @@ const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[]
         step: 1,
         description: 'Size of each chunk in tokens'
       });
-      processedParamIds.add('chunk_size');
     }
 
     // Add chunk_overlap parameter if available
@@ -799,26 +406,12 @@ const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[]
         step: 1,
         description: 'Number of overlapping tokens between chunks'
       });
-      processedParamIds.add('chunk_overlap');
     }
 
-    // If we have a static template, use its parameter definitions as base for remaining params
-    if (staticTemplate) {
-      staticTemplate.parameters.forEach(staticParam => {
-        if (!processedParamIds.has(staticParam.id)) {
-          const apiValue = apiChunker.params[staticParam.id];
-          parameters.push({
-            ...staticParam,
-            defaultValue: apiValue !== undefined ? apiValue : staticParam.defaultValue
-          });
-          processedParamIds.add(staticParam.id);
-        }
-      });
-    }
-
-    // Add any additional parameters from API that weren't processed yet
+    // Add any additional parameters from API
     Object.entries(apiChunker.params).forEach(([key, value]) => {
-      if (!processedParamIds.has(key)) {
+      // Skip if already processed by specific handlers above
+      if (key !== 'chunk_method' && key !== 'chunk_size' && key !== 'chunk_overlap') {
         parameters.push({
           id: key,
           name: formatParamName(key),
@@ -842,11 +435,7 @@ const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[]
 // Transform API indexer data to Module format
 const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[] => {
   return apiIndexers.map(apiIndexer => {
-    // Try to find a static template for this index type
-    const staticTemplate = AVAILABLE_MODULES.indexer.find(i => i.id === apiIndexer.index_type);
-    
     const parameters: ParameterDefinition[] = [];
-    const processedParamIds = new Set<string>();
 
     // Add index_type parameter (always present for indexers)
     parameters.push({
@@ -856,7 +445,6 @@ const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[]
       defaultValue: apiIndexer.index_type,
       description: 'Type of index (vector, bm25, hybrid)'
     });
-    processedParamIds.add('index_type');
 
     // Add model parameter (always present for indexers)
     parameters.push({
@@ -866,25 +454,11 @@ const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[]
       defaultValue: apiIndexer.model,
       description: 'Model used for indexing'
     });
-    processedParamIds.add('model');
 
-    // If we have a static template, use its parameter definitions as base for remaining params
-    if (staticTemplate) {
-      staticTemplate.parameters.forEach(staticParam => {
-        if (!processedParamIds.has(staticParam.id)) {
-          const apiValue = apiIndexer.params[staticParam.id];
-          parameters.push({
-            ...staticParam,
-            defaultValue: apiValue !== undefined ? apiValue : staticParam.defaultValue
-          });
-          processedParamIds.add(staticParam.id);
-        }
-      });
-    }
-
-    // Add any additional parameters from API that weren't processed yet
+    // Add any additional parameters from API
     Object.entries(apiIndexer.params).forEach(([key, value]) => {
-      if (!processedParamIds.has(key)) {
+      // Skip if already processed by specific handlers above
+      if (key !== 'index_type' && key !== 'model') {
         // Special handling for certain parameter types
         let paramType: ParameterType = inferParameterType(value);
         let options: string[] | undefined = undefined;
@@ -1007,8 +581,8 @@ function EvaluationInterface({
       } catch (error) {
         console.error('Failed to fetch parsers:', error);
         setApiParsersError(error instanceof Error ? error.message : 'Failed to fetch parsers');
-        // Fallback to static parsers if API fails
-        setApiFetchedParsers(AVAILABLE_MODULES.parser);
+        // Set empty array instead of fallback to static parsers
+        setApiFetchedParsers([]);
       } finally {
         setApiParsersLoading(false);
       }
@@ -1046,8 +620,8 @@ function EvaluationInterface({
       } catch (error) {
         console.error('Failed to fetch chunkers:', error);
         setApiChunkersError(error instanceof Error ? error.message : 'Failed to fetch chunkers');
-        // Fallback to static chunkers if API fails
-        setApiFetchedChunkers(AVAILABLE_MODULES.chunker);
+        // Set empty array instead of fallback to static chunkers
+        setApiFetchedChunkers([]);
       } finally {
         setApiChunkersLoading(false);
       }
@@ -1085,8 +659,8 @@ function EvaluationInterface({
       } catch (error) {
         console.error('Failed to fetch indexers:', error);
         setApiIndexersError(error instanceof Error ? error.message : 'Failed to fetch indexers');
-        // Fallback to static indexers if API fails
-        setApiFetchedIndexers(AVAILABLE_MODULES.indexer);
+        // Set empty array instead of fallback to static indexers
+        setApiFetchedIndexers([]);
       } finally {
         setApiIndexersLoading(false);
       }
@@ -1264,15 +838,16 @@ function EvaluationInterface({
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
     let modulesOfType: Module[];
     
-    // Use API-fetched modules for parsers, chunkers, and indexers, static modules for others
     if (moduleType === 'parser') {
-      modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
+      modulesOfType = apiFetchedParsers;
     } else if (moduleType === 'chunker') {
-      modulesOfType = apiFetchedChunkers.length > 0 ? apiFetchedChunkers : AVAILABLE_MODULES.chunker;
+      modulesOfType = apiFetchedChunkers;
     } else if (moduleType === 'indexer') {
-      modulesOfType = apiFetchedIndexers.length > 0 ? apiFetchedIndexers : AVAILABLE_MODULES.indexer;
+      modulesOfType = apiFetchedIndexers;
+    } else if (moduleType === 'generator') {
+      modulesOfType = GENERATOR_MODULES; 
     } else {
-      modulesOfType = AVAILABLE_MODULES[moduleType];
+      modulesOfType = []; // Should not happen for configured types
     }
     
     const module = modulesOfType.find(m => m.id === moduleId);
@@ -1375,19 +950,25 @@ function EvaluationInterface({
     let errorMessage: string | null = null;
     
     if (moduleType === 'parser') {
-      modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
+      modulesOfType = apiFetchedParsers;
       isLoading = apiParsersLoading;
       errorMessage = apiParsersError;
     } else if (moduleType === 'chunker') {
-      modulesOfType = apiFetchedChunkers.length > 0 ? apiFetchedChunkers : AVAILABLE_MODULES.chunker;
+      modulesOfType = apiFetchedChunkers;
       isLoading = apiChunkersLoading;
       errorMessage = apiChunkersError;
     } else if (moduleType === 'indexer') {
-      modulesOfType = apiFetchedIndexers.length > 0 ? apiFetchedIndexers : AVAILABLE_MODULES.indexer;
+      modulesOfType = apiFetchedIndexers;
       isLoading = apiIndexersLoading;
       errorMessage = apiIndexersError;
+    } else if (moduleType === 'generator') {
+      modulesOfType = GENERATOR_MODULES;
+      isLoading = false; // Generators are static for now
+      errorMessage = null;
     } else {
-      modulesOfType = AVAILABLE_MODULES[moduleType];
+      modulesOfType = [];
+      isLoading = false;
+      errorMessage = null;
     }
     
     const selectedModuleDetails = modulesOfType.find(m => m.id === selectedModuleId);
@@ -1407,13 +988,25 @@ function EvaluationInterface({
         {/* Error state for API modules */}
         {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && errorMessage && (
           <div className="text-sm text-red-600">
-            Failed to load {moduleType}s: {errorMessage}. Using fallback options.
+            Error: Failed to load {moduleType}s from API ({errorMessage}). Configuration cannot proceed without {moduleType}s.
           </div>
         )}
         
-        <Select value={selectedModuleId} onValueChange={onSelectModule} disabled={isLoading}>
+        {/* Empty state when no modules available and not loading and no error */}
+        {(moduleType === 'parser' || moduleType === 'chunker' || moduleType === 'indexer') && !isLoading && !errorMessage && modulesOfType.length === 0 && (
+          <div className="text-sm text-muted-foreground">
+            No {moduleType}s available from the API. Please check the API connection or configuration.
+          </div>
+        )}
+        
+        <Select value={selectedModuleId} onValueChange={onSelectModule} disabled={isLoading || (!isLoading && modulesOfType.length === 0)}>
           <SelectTrigger id={`${moduleType}-select`}>
-            <SelectValue placeholder={isLoading ? "Loading..." : `Select ${moduleType}`} />
+            <SelectValue placeholder={
+              isLoading ? "Loading..." : 
+              errorMessage ? `Error loading ${moduleType}s` :
+              modulesOfType.length === 0 ? `No ${moduleType}s available` : 
+              `Select ${moduleType}`
+            } />
           </SelectTrigger>
           <SelectContent>
             {modulesOfType.map(module => (
@@ -1547,10 +1140,10 @@ function EvaluationInterface({
               
               {/* Show error state for parsers */}
               {apiParsersError && (
-                <div className="p-4 border rounded-md bg-yellow-50 text-yellow-800">
+                <div className="p-4 border rounded-md bg-red-50 text-red-800">
                   <p className="text-sm">
-                    Warning: Failed to load parsers from API ({apiParsersError}). 
-                    Using fallback options. Some features may be limited.
+                    Error: Failed to load parsers from API ({apiParsersError}). 
+                    Configuration cannot proceed without parsers.
                   </p>
                 </div>
               )}
@@ -1564,10 +1157,10 @@ function EvaluationInterface({
               
               {/* Show error state for chunkers */}
               {apiChunkersError && (
-                <div className="p-4 border rounded-md bg-yellow-50 text-yellow-800">
+                <div className="p-4 border rounded-md bg-red-50 text-red-800">
                   <p className="text-sm">
-                    Warning: Failed to load chunkers from API ({apiChunkersError}). 
-                    Using fallback options. Some features may be limited.
+                    Error: Failed to load chunkers from API ({apiChunkersError}). 
+                    Configuration cannot proceed without chunkers.
                   </p>
                 </div>
               )}
@@ -1581,10 +1174,10 @@ function EvaluationInterface({
               
               {/* Show error state for indexers */}
               {apiIndexersError && (
-                <div className="p-4 border rounded-md bg-yellow-50 text-yellow-800">
+                <div className="p-4 border rounded-md bg-red-50 text-red-800">
                   <p className="text-sm">
-                    Warning: Failed to load indexers from API ({apiIndexersError}). 
-                    Using fallback options. Some features may be limited.
+                    Error: Failed to load indexers from API ({apiIndexersError}). 
+                    Configuration cannot proceed without indexers.
                   </p>
                 </div>
               )}
@@ -1675,7 +1268,7 @@ function EvaluationInterface({
                         <SelectValue placeholder="Select generator" />
                       </SelectTrigger>
                       <SelectContent position="popper">
-                        {AVAILABLE_MODULES.generator.map((generator) => (
+                        {GENERATOR_MODULES.map((generator) => (
                           <SelectItem key={generator.id} value={generator.id}>
                             {generator.name}
                           </SelectItem>
@@ -1713,14 +1306,14 @@ function EvaluationInterface({
                              <p className="mt-2"><span className="font-semibold">Preprocessing & Retrieval Config:</span> {currentRAGConfig.name}</p> 
                             <p className="text-xs text-muted-foreground">{currentRAGConfig.description}</p>
                             <div className="mt-2 space-y-1">
-                                <p className="text-xs"><span className="font-semibold">Parser:</span> {AVAILABLE_MODULES.parser.find(m => m.id === currentRAGConfig.parser.moduleId)?.name || 'N/A'}</p>
-                                <p className="text-xs"><span className="font-semibold">Chunker:</span> {AVAILABLE_MODULES.chunker.find(m => m.id === currentRAGConfig.chunker.moduleId)?.name || 'N/A'}</p>
-                                <p className="text-xs"><span className="font-semibold">Indexer:</span> {AVAILABLE_MODULES.indexer.find(m => m.id === currentRAGConfig.indexer.moduleId)?.name || 'N/A'}</p>
+                                <p className="text-xs"><span className="font-semibold">Parser:</span> {apiFetchedParsers.find(m => m.id === currentRAGConfig.parser.moduleId)?.name || 'N/A (API Error or not found)'}</p>
+                                <p className="text-xs"><span className="font-semibold">Chunker:</span> {apiFetchedChunkers.find(m => m.id === currentRAGConfig.chunker.moduleId)?.name || 'N/A (API Error or not found)'}</p>
+                                <p className="text-xs"><span className="font-semibold">Indexer:</span> {apiFetchedIndexers.find(m => m.id === currentRAGConfig.indexer.moduleId)?.name || 'N/A (API Error or not found)'}</p>
                             </div>
                         </div>
                         <div className="pt-2 border-t">
-                            <p><span className="font-semibold">Generator:</span> {AVAILABLE_MODULES.generator.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
-                            <p className="text-xs text-muted-foreground">{AVAILABLE_MODULES.generator.find(m => m.id === selectedGenerator)?.description || ''}</p>
+                            <p><span className="font-semibold">Generator:</span> {GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
+                            <p className="text-xs text-muted-foreground">{GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.description || ''}</p>
                         </div>
                     </CardContent>
                   </Card>
