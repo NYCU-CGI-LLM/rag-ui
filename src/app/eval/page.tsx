@@ -34,6 +34,29 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 
+// API Configuration
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
+// API Response Interfaces for Parser Data
+interface ApiParserParameterValue {
+  [key: string]: string | number | boolean;
+}
+
+interface ApiParserEntry {
+  id: string;
+  name: string;
+  module_type: string;
+  supported_mime: string[];
+  params: ApiParserParameterValue;
+  status: string;
+  description?: string;
+}
+
+interface ApiParserListResponse {
+  total: number;
+  parsers: ApiParserEntry[];
+}
+
 // New Type Definitions for RAG Configuration
 type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator';
 type ParameterType = 'string' | 'number' | 'boolean' | 'select';
@@ -602,6 +625,65 @@ const AVAILABLE_MODULES: { [key in ModuleType]: Module[] } = {
   ]
 };
 
+// Utility function to format parameter names from snake_case to Title Case
+const formatParamName = (id: string): string => {
+  return id
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+// Utility function to infer parameter type from value
+const inferParameterType = (value: string | number | boolean): ParameterType => {
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'number') return 'number';
+  return 'string';
+};
+
+// Transform API parser data to Module format
+const transformApiParsersToModules = (apiParsers: ApiParserEntry[]): Module[] => {
+  return apiParsers.map(apiParser => {
+    // Try to find a static template for this module type
+    const staticTemplate = AVAILABLE_MODULES.parser.find(p => p.id === apiParser.module_type);
+    
+    const parameters: ParameterDefinition[] = [];
+    const processedParamIds = new Set<string>();
+
+    // If we have a static template, use its parameter definitions as base
+    if (staticTemplate) {
+      staticTemplate.parameters.forEach(staticParam => {
+        const apiValue = apiParser.params[staticParam.id];
+        parameters.push({
+          ...staticParam,
+          defaultValue: apiValue !== undefined ? apiValue : staticParam.defaultValue
+        });
+        processedParamIds.add(staticParam.id);
+      });
+    }
+
+    // Add any additional parameters from API that weren't in the static template
+    Object.entries(apiParser.params).forEach(([key, value]) => {
+      if (!processedParamIds.has(key)) {
+        parameters.push({
+          id: key,
+          name: formatParamName(key),
+          type: inferParameterType(value),
+          defaultValue: value,
+          description: `${formatParamName(key)} parameter`
+        });
+      }
+    });
+
+    return {
+      id: apiParser.id, // Use the UUID from API
+      name: apiParser.name,
+      description: apiParser.description || `${apiParser.module_type} parser`,
+      type: 'parser' as const,
+      parameters
+    };
+  });
+};
+
 function EvaluationInterface({
   ragConfigs,
   sources,
@@ -634,8 +716,52 @@ function EvaluationInterface({
   const [chunkerParams, setChunkerParams] = useState<{ [key: string]: string | number | boolean }>({});
   const [retrieverParams, setRetrieverParams] = useState<{ [key: string]: string | number | boolean }>({});
 
+  // API-fetched parsers state
+  const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
+  const [apiParsersLoading, setApiParsersLoading] = useState(true);
+  const [apiParsersError, setApiParsersError] = useState<string | null>(null);
+
   const currentRAGConfig = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
+
+  // Fetch parsers from API on component mount
+  useEffect(() => {
+    const fetchParsers = async () => {
+      try {
+        setApiParsersLoading(true);
+        setApiParsersError(null);
+        
+        // Check if API_URL is configured
+        if (!API_URL) {
+          throw new Error('API_URL not configured');
+        }
+        
+        const response = await fetch(`${API_URL}/parser/`, {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: ApiParserListResponse = await response.json();
+        const transformedParsers = transformApiParsersToModules(data.parsers);
+        setApiFetchedParsers(transformedParsers);
+      } catch (error) {
+        console.error('Failed to fetch parsers:', error);
+        setApiParsersError(error instanceof Error ? error.message : 'Failed to fetch parsers');
+        // Fallback to static parsers if API fails
+        setApiFetchedParsers(AVAILABLE_MODULES.parser);
+      } finally {
+        setApiParsersLoading(false);
+      }
+    };
+
+    fetchParsers();
+  }, []);
 
   useEffect(() => {
     if (selectedRAGConfigId && activeTab === 'configure') {
@@ -804,7 +930,16 @@ function EvaluationInterface({
   };
 
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
-    const module = AVAILABLE_MODULES[moduleType].find(m => m.id === moduleId);
+    let modulesOfType: Module[];
+    
+    // Use API-fetched parsers for parser modules, static modules for others
+    if (moduleType === 'parser') {
+      modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
+    } else {
+      modulesOfType = AVAILABLE_MODULES[moduleType];
+    }
+    
+    const module = modulesOfType.find(m => m.id === moduleId);
     if (!module) return {};
     const params: { [key: string]: string | number | boolean } = {};
     module.parameters.forEach(p => {
@@ -898,7 +1033,19 @@ function EvaluationInterface({
     currentParams: { [key: string]: string | number | boolean },
     onParamChange: (moduleType: ModuleType, paramId: string, value: string | number | boolean) => void
   ) => {
-    const modulesOfType = AVAILABLE_MODULES[moduleType];
+    // Get the appropriate module list based on type
+    let modulesOfType: Module[];
+    let isLoading = false;
+    let errorMessage: string | null = null;
+    
+    if (moduleType === 'parser') {
+      modulesOfType = apiFetchedParsers.length > 0 ? apiFetchedParsers : AVAILABLE_MODULES.parser;
+      isLoading = apiParsersLoading;
+      errorMessage = apiParsersError;
+    } else {
+      modulesOfType = AVAILABLE_MODULES[moduleType];
+    }
+    
     const selectedModuleDetails = modulesOfType.find(m => m.id === selectedModuleId);
 
     return (
@@ -907,9 +1054,22 @@ function EvaluationInterface({
             <Label htmlFor={`${moduleType}-select`} className="text-md font-semibold capitalize">{moduleType}</Label>
             {selectedModuleDetails && <span className="text-xs text-muted-foreground">{selectedModuleDetails.name}</span>}
         </div>
-        <Select value={selectedModuleId} onValueChange={onSelectModule}>
+        
+        {/* Loading state for parsers */}
+        {moduleType === 'parser' && isLoading && (
+          <div className="text-sm text-muted-foreground">Loading parsers from API...</div>
+        )}
+        
+        {/* Error state for parsers */}
+        {moduleType === 'parser' && errorMessage && (
+          <div className="text-sm text-red-600">
+            Failed to load parsers: {errorMessage}. Using fallback options.
+          </div>
+        )}
+        
+        <Select value={selectedModuleId} onValueChange={onSelectModule} disabled={isLoading}>
           <SelectTrigger id={`${moduleType}-select`}>
-            <SelectValue placeholder={`Select ${moduleType}`} />
+            <SelectValue placeholder={isLoading ? "Loading..." : `Select ${moduleType}`} />
           </SelectTrigger>
           <SelectContent>
             {modulesOfType.map(module => (
@@ -1034,6 +1194,23 @@ function EvaluationInterface({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Show loading state for parsers */}
+              {apiParsersLoading && (
+                <div className="p-4 border rounded-md bg-blue-50 text-blue-800">
+                  <p className="text-sm">Loading available parsers from API...</p>
+                </div>
+              )}
+              
+              {/* Show error state for parsers */}
+              {apiParsersError && (
+                <div className="p-4 border rounded-md bg-yellow-50 text-yellow-800">
+                  <p className="text-sm">
+                    Warning: Failed to load parsers from API ({apiParsersError}). 
+                    Using fallback options. Some features may be limited.
+                  </p>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 <Label htmlFor="config-name">Configuration Name</Label>
                 <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
@@ -1048,8 +1225,8 @@ function EvaluationInterface({
               {renderModuleSelector('retriever', selectedRetriever, handleNewConfigRetrieverSelect, retrieverParams, handleNewConfigParamChange)}
 
               <Button className="w-full" onClick={handleSaveConfig} 
-                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever}>
-                Save Preprocessing & Retrieval Configuration
+                disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedRetriever || apiParsersLoading}>
+                {apiParsersLoading ? "Loading Parsers..." : "Save Preprocessing & Retrieval Configuration"}
               </Button> 
             </CardContent>
           </Card>
