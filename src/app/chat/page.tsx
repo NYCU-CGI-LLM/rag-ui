@@ -1083,20 +1083,13 @@ export default function ChatPage() {
                           <div className="font-medium">{session.name}</div>
                           <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
                         </div>
-                        <div className="text-xs text-muted-foreground ml-2 flex items-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
-                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
-                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
-                          </svg>
-                          Copy
-                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-2">
                         <Badge variant="outline" className="text-xs">
-                          Library: {libraries.find(l => l.id === session.library)?.name || session.library}
+                          {libraries.find(l => l.id === session.library)?.name || session.library}
                         </Badge>
                         <Badge variant="outline" className="text-xs">
-                          RAG Configuration: {availableRAGConfigs.find(c => c.id === session.ragConfigId)?.name || session.ragConfigId}
+                          {availableRAGConfigs.find(c => c.id === session.ragConfigId)?.name || session.ragConfigId}
                         </Badge>
                       </div>
                     </div>
