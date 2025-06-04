@@ -412,6 +412,26 @@ function ChatMessage({ isUser, content, timestamp = "Just now", source }: Omit<M
   );
 }
 
+// API Configuration
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
+// API Response Interfaces for Chat
+interface ApiChatConfig {
+  llm_model: string;
+  temperature: number;
+  top_p: number;
+  top_k: number;
+}
+
+interface ApiChatSummary {
+  id: string;
+  name: string | null;
+  message_count: number;
+  last_activity: string;
+  retriever_config_name: string | null;
+  config: ApiChatConfig;
+}
+
 export default function ChatPage() {
   const [selectedLibrary, setSelectedLibrary] = useState(libraries[0].id);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -427,7 +447,9 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   
   // Chat sessions state management
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>(initialChatSessions);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [isLoadingChats, setIsLoadingChats] = useState(true);
+  const [chatsError, setChatsError] = useState<string | null>(null);
   
   // Track the currently selected chat session and RAG config
   const [selectedSessionId, setSelectedSessionId] = useState<string>("session-1");
@@ -464,9 +486,14 @@ export default function ChatPage() {
     }
   }, [selectedSessionId, chatSessions]);
 
-  // Load initial session data on first render
+  // Fetch chat sessions from API on component mount
   useEffect(() => {
-    if (selectedSessionId) {
+    fetchChatSessions();
+  }, []);
+
+  // Load initial session data when sessions are loaded
+  useEffect(() => {
+    if (!isLoadingChats && chatSessions.length > 0 && selectedSessionId) {
       const session = chatSessions.find(s => s.id === selectedSessionId);
       if (session) {
         // Set configuration based on the selected session
@@ -482,7 +509,7 @@ export default function ChatPage() {
         }]);
       }
     }
-  }, []);
+  }, [isLoadingChats, chatSessions, selectedSessionId]);
   
   // Get the full description of the selected library
   const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
@@ -591,7 +618,7 @@ export default function ChatPage() {
       generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
     };
 
-    // Add to sessions list
+    // Add to sessions list (temporary - in real implementation this should call API)
     setChatSessions(prev => [newSession, ...prev]);
 
     // Update main configuration with temporary selections
@@ -613,6 +640,9 @@ export default function ChatPage() {
     // Close dialogs
     setIsNewSessionDialogOpen(false);
     setIsNewChatPopoverOpen(false);
+
+    // TODO: In future, call API to create chat session and then refresh the list
+    // For now, we just add to local state
   };
 
   // Delete a chat session
@@ -726,6 +756,97 @@ export default function ChatPage() {
     }
   };
 
+  // Transform API chat data to ChatSession format
+  const transformApiChatToSession = (apiChat: ApiChatSummary): ChatSession => {
+    // Format the last activity timestamp
+    const lastActivity = new Date(apiChat.last_activity);
+    const now = new Date();
+    const diffInHours = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
+    
+    let timestamp: string;
+    if (diffInHours < 24) {
+      timestamp = `Today, ${lastActivity.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (diffInHours < 48) {
+      timestamp = `Yesterday, ${lastActivity.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else {
+      timestamp = lastActivity.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Try to find matching RAG config by name
+    const ragConfig = availableRAGConfigs.find(config => 
+      config.name === apiChat.retriever_config_name
+    );
+
+    return {
+      id: apiChat.id,
+      name: apiChat.name || "Untitled Chat",
+      timestamp: timestamp,
+      library: "tech-docs", // Default library since API doesn't provide this
+      ragConfigId: ragConfig?.id || availableRAGConfigs[0]?.id || "",
+      generatorConfig: {
+        moduleId: "openai_llm",
+        parameterValues: {
+          llm: apiChat.config.llm_model,
+          max_tokens: 4096, // Default value
+          temperature: apiChat.config.temperature,
+          top_p: apiChat.config.top_p,
+          // Note: API top_k is for retrieval, not generation
+        }
+      }
+    };
+  };
+
+  // Fetch chat sessions from API
+  const fetchChatSessions = async () => {
+    try {
+      setIsLoadingChats(true);
+      setChatsError(null);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/chat/`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const apiChats: ApiChatSummary[] = await response.json();
+      
+      // Transform API data to ChatSession format
+      const transformedSessions = apiChats.map(transformApiChatToSession);
+      
+      setChatSessions(transformedSessions);
+      
+      // Set initial session if we have chats
+      if (transformedSessions.length > 0 && !selectedSessionId) {
+        const firstSession = transformedSessions[0];
+        setSelectedSessionId(firstSession.id);
+        setSelectedLibrary(firstSession.library);
+        setSelectedRAGConfigId(firstSession.ragConfigId);
+      }
+    } catch (error) {
+      console.error('Failed to fetch chat sessions:', error);
+      setChatsError(error instanceof Error ? error.message : 'Failed to fetch chat sessions');
+      
+      // Fallback to initial mock data on error
+      setChatSessions(initialChatSessions);
+      if (initialChatSessions.length > 0 && !selectedSessionId) {
+        const firstSession = initialChatSessions[0];
+        setSelectedSessionId(firstSession.id);
+        setSelectedLibrary(firstSession.library);
+        setSelectedRAGConfigId(firstSession.ragConfigId);
+      }
+    } finally {
+      setIsLoadingChats(false);
+    }
+  };
+
   return (
     <>
       <PageLayout>
@@ -784,41 +905,59 @@ export default function ChatPage() {
             
             {/* Chat list */}
             <div className="flex flex-col">
-              {chatSessions.map((session) => (
-                <div 
-                  key={session.id} 
-                  className={`group p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
-                  onClick={() => loadExistingSession(session.id)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{session.name}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0 hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={(e) => handleDeleteSession(session.id, e)}
-                      title="Delete session"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 6h18"/>
-                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                        <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
-                        <line x1="10" x2="10" y1="11" y2="17"/>
-                        <line x1="14" x2="14" y1="11" y2="17"/>
-                      </svg>
-                      <span className="sr-only">Delete session</span>
-                    </Button>
-                  </div>
+              {isLoadingChats ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  <div className="text-sm">Loading chat sessions...</div>
                 </div>
-              ))}
-              {chatSessions.length === 0 && (
+              ) : chatsError ? (
+                <div className="p-4">
+                  <div className="text-sm text-red-600 mb-2">Failed to load chats from API</div>
+                  <div className="text-xs text-muted-foreground mb-3">{chatsError}</div>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={fetchChatSessions}
+                    className="w-full"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : chatSessions.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <div className="text-sm">No chat sessions yet</div>
                   <div className="text-xs mt-1">Create your first session to get started</div>
                 </div>
+              ) : (
+                chatSessions.map((session) => (
+                  <div 
+                    key={session.id} 
+                    className={`group p-4 cursor-pointer chat-item hover:bg-accent hover:text-accent-foreground ${session.id === selectedSessionId ? 'bg-accent text-accent-foreground' : ''}`}
+                    onClick={() => loadExistingSession(session.id)}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{session.name}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{session.timestamp}</div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0 hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={(e) => handleDeleteSession(session.id, e)}
+                        title="Delete session"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18"/>
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                          <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
+                          <line x1="10" x2="10" y1="11" y2="17"/>
+                          <line x1="14" x2="14" y1="11" y2="17"/>
+                        </svg>
+                        <span className="sr-only">Delete session</span>
+                      </Button>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </aside>
