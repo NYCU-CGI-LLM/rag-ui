@@ -380,10 +380,9 @@ interface Message {
   isUser: boolean;
   content: string;
   timestamp?: string;
-  source?: string;
 }
 
-function ChatMessage({ isUser, content, timestamp = "Just now", source }: Omit<Message, 'id'>) {
+function ChatMessage({ isUser, content, timestamp = "Just now" }: Omit<Message, 'id'>) {
   // Base classes without the tail styling
   const baseClasses = "p-4 shadow-sm transition-all duration-200 max-w-[85%] md:max-w-[75%] relative";
   
@@ -397,15 +396,6 @@ function ChatMessage({ isUser, content, timestamp = "Just now", source }: Omit<M
       <div className={messageClasses}>
         <div className="font-semibold mb-1">{isUser ? "You" : "AI Assistant"}</div>
         <p className="whitespace-pre-wrap break-words">{content}</p>
-        {source && (
-          <div className="mt-3 pt-2 border-t border-border/30 text-xs text-muted-foreground flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-            </svg>
-            <span>Source: {source}</span>
-          </div>
-        )}
       </div>
       <div className="text-xs text-muted-foreground mt-1 mx-2">{timestamp}</div>
     </div>
@@ -420,7 +410,6 @@ interface ApiChatConfig {
   llm_model: string;
   temperature: number;
   top_p: number;
-  top_k: number;
 }
 
 interface ApiChatSummary {
@@ -432,17 +421,102 @@ interface ApiChatSummary {
   config: ApiChatConfig;
 }
 
+// Add interface for detailed chat response
+interface ApiChatDetail {
+  id: string;
+  name: string;
+  retriever_id: string;
+  metadata: any;
+  message_count: number;
+  last_activity: string;
+  config: ApiChatConfig;
+  messages: ApiMessage[];
+  retriever_config_name: string;
+}
+
+// Add interface for API messages
+interface ApiMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  metadata: any;
+  chat_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Add interfaces for retriever detail API response
+interface ApiRetrieverDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  library_id: string;
+  parser_id: string;
+  chunker_id: string;
+  indexer_id: string;
+  collection_name: string | null;
+  top_k: number;
+  total_chunks: number | null;
+  indexed_at: string | null;
+  error_message: string | null;
+  library_name: string | null;
+  parser_info: ComponentInfo | null;
+  chunker_info: ComponentInfo | null;
+  indexer_info: ComponentInfo | null;
+  pipeline_stats: any | null;
+}
+
+interface ComponentInfo {
+  id: string;
+  name: string;
+  type: string;
+  params?: any;
+}
+
+interface ComponentInfo {
+  id: string;
+  name: string;
+  type: string;
+  params?: any;
+}
+
+// Add interfaces for library and retriever API responses
+interface ApiLibrary {
+  id: string;
+  library_name: string;
+  description: string | null;
+  stats: {
+    file_count: number;
+    total_size: number;
+  };
+}
+
+interface ApiRetriever {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  library_id: string;
+  parser_id: string;
+  chunker_id: string;
+  indexer_id: string;
+  collection_name: string | null;
+  top_k: number;
+  total_chunks: number | null;
+  indexed_at: string | null;
+  error_message: string | null;
+}
+
+interface ApiRetrieverListResponse {
+  total: number;
+  retrievers: ApiRetriever[];
+}
+
 export default function ChatPage() {
   const [selectedLibrary, setSelectedLibrary] = useState(libraries[0].id);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "initial-ai-message",
-      isUser: false,
-      content: "Hello! How can I help you today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
@@ -451,8 +525,20 @@ export default function ChatPage() {
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [chatsError, setChatsError] = useState<string | null>(null);
   
+  // Add state for message loading
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  
+  // Add state for current retriever information
+  const [currentRetriever, setCurrentRetriever] = useState<ApiRetrieverDetail | null>(null);
+  const [isLoadingRetriever, setIsLoadingRetriever] = useState(false);
+  const [retrieverError, setRetrieverError] = useState<string | null>(null);
+  
+  // Add state for top_k retrieval parameter (separate from generator params)
+  const [retrievalTopK, setRetrievalTopK] = useState<number>(5);
+  
   // Track the currently selected chat session and RAG config
-  const [selectedSessionId, setSelectedSessionId] = useState<string>("session-1");
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedRAGConfigId, setSelectedRAGConfigId] = useState<string>(availableRAGConfigs[0]?.id || "");
 
   // Generator parameter overrides for current session
@@ -465,13 +551,19 @@ export default function ChatPage() {
   const [isNewChatPopoverOpen, setIsNewChatPopoverOpen] = useState(false);
   const [isNewSessionDialogOpen, setIsNewSessionDialogOpen] = useState(false);
   const [isExistingSessionDialogOpen, setIsExistingSessionDialogOpen] = useState(false);
-  const [tempLibrary, setTempLibrary] = useState(libraries[0].id);
-  const [tempRAGConfigId, setTempRAGConfigId] = useState(availableRAGConfigs[0]?.id || "");
   const [tempSessionName, setTempSessionName] = useState("");
 
   // Delete confirmation dialog state
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  // Add state for API libraries and retrievers
+  const [apiLibraries, setApiLibraries] = useState<ApiLibrary[]>([]);
+  const [apiRetrievers, setApiRetrievers] = useState<ApiRetriever[]>([]);
+  const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
+  const [isLoadingRetrievers, setIsLoadingRetrievers] = useState(false);
+  const [tempSelectedLibraryId, setTempSelectedLibraryId] = useState<string>("");
+  const [tempSelectedRetrieverId, setTempSelectedRetrieverId] = useState<string>("");
 
   // Initialize generator params when session changes (now from session's generator config)
   useEffect(() => {
@@ -500,13 +592,48 @@ export default function ChatPage() {
         setSelectedLibrary(session.library);
         setSelectedRAGConfigId(session.ragConfigId);
         
-        // Set initial message
-        setMessages([{
-          id: "initial-ai-message-existing",
-          isUser: false,
-          content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }]);
+        // Fetch actual messages from API
+        const loadInitialMessages = async () => {
+          try {
+            const fetchedMessages = await fetchChatMessages(selectedSessionId);
+            
+            if (fetchedMessages.length > 0) {
+              // Use actual messages from API
+              setMessages(fetchedMessages);
+            } else {
+              // No messages yet, show initial greeting
+              setMessages([{
+                id: "initial-ai-message-existing",
+                isUser: false,
+                content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              }]);
+            }
+          } catch (error) {
+            // On error, show fallback message
+            setMessages([{
+              id: "initial-ai-message-error",
+              isUser: false,
+              content: `Hello! I've loaded the "${session.name}" session, but couldn't fetch previous messages. How can I help you today?`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            }]);
+          }
+          
+          // Also fetch retriever details
+          try {
+            const chatResponse = await fetch(`${API_URL}/chat/${selectedSessionId}`);
+            if (chatResponse.ok) {
+              const chatDetail: ApiChatDetail = await chatResponse.json();
+              if (chatDetail.retriever_id) {
+                await fetchRetrieverDetails(chatDetail.retriever_id);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to fetch retriever details for initial session:', error);
+          }
+        };
+        
+        loadInitialMessages();
       }
     }
   }, [isLoadingChats, chatSessions, selectedSessionId]);
@@ -532,7 +659,7 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async () => {
-    if (inputValue.trim() === "" || isLoading) return;
+    if (inputValue.trim() === "" || isLoading || !selectedSessionId) return;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -546,18 +673,19 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
+      // Use the direct API endpoint based on test results
       const apiPayload = {
-        query: inputValue,
-        result_column: "generated_texts", // This might need to be dynamic or removed if backend handles it
-        config: {
-          library_id: selectedLibrary,
-          ragConfigId: selectedRAGConfigId,
-          generatorParams: generatorParams, // Include current generator parameters
-        }
+        message: inputValue,
+        model: generatorParams.llm || "gpt-4o-mini",
+        temperature: generatorParams.temperature || 0.7,
+        top_p: generatorParams.top_p || 1.0,
+        top_k: retrievalTopK,
+        stream: false,
+        context_config: {}
       };
       console.log("Sending to API:", apiPayload); // For debugging
 
-      const response = await fetch('/api/chat', {
+      const response = await fetch(`${API_URL}/chat/${selectedSessionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -572,14 +700,14 @@ export default function ChatPage() {
 
       const data = await response.json();
 
-      const aiContent = data.result;
+      // Based on API test results, the response contains: message_id, response, sources, etc.
+      const aiContent = data.response;
 
       const aiMessage: Message = {
-        id: `ai-${Date.now()}`,
+        id: data.message_id || `ai-${Date.now()}`,
         isUser: false,
-        content: aiContent || "Sorry, I couldn't process that.", // Fallback if aiContent is null/undefined
+        content: aiContent || "Sorry, I couldn't process that.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        // source: data.source // If your API returns a source, uncomment and use it
       };
       setMessages((prevMessages) => [...prevMessages, aiMessage]);
     } catch (error) {
@@ -597,52 +725,70 @@ export default function ChatPage() {
   };
 
   // Create a new chat session with the selected configuration
-  const createNewChatSession = () => {
-    // Generate new session ID and timestamp
-    const newSessionId = `session-${Date.now()}`;
-    const timestamp = new Date().toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
+  const createNewChatSession = async () => {
+    if (!tempSelectedRetrieverId) {
+      console.error('No retriever selected');
+      return;
+    }
 
-    // Create new session object
-    const newSession: ChatSession = {
-      id: newSessionId,
-      name: tempSessionName.trim() || "New Chat Session",
-      timestamp: timestamp,
-      library: tempLibrary,
-      ragConfigId: tempRAGConfigId,
-      generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
-    };
+    try {
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
 
-    // Add to sessions list (temporary - in real implementation this should call API)
-    setChatSessions(prev => [newSession, ...prev]);
+      // Prepare API payload based on the test example
+      const apiPayload = {
+        name: tempSessionName.trim() || "New Chat Session",
+        retriever_id: tempSelectedRetrieverId,
+        metadata: {},
+        llm_model: "gpt-4o-mini",
+        temperature: 0.7,
+        top_p: 1.0,
+        top_k: 5
+      };
 
-    // Update main configuration with temporary selections
-    setSelectedLibrary(tempLibrary);
-    setSelectedRAGConfigId(tempRAGConfigId);
-    setSelectedSessionId(newSessionId);
-    
-    // Reset chat messages to initial greeting
-    setMessages([{
-      id: "initial-ai-message-new",
-      isUser: false,
-      content: "Hello! How can I help you today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    }]);
-    
-    // Reset temporary form values
-    setTempSessionName("");
-    
-    // Close dialogs
-    setIsNewSessionDialogOpen(false);
-    setIsNewChatPopoverOpen(false);
+      const response = await fetch(`${API_URL}/chat/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(apiPayload),
+      });
 
-    // TODO: In future, call API to create chat session and then refresh the list
-    // For now, we just add to local state
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const newChat = await response.json();
+
+      // Refresh chat sessions list to include the new chat
+      await fetchChatSessions();
+
+      // Set the new chat as selected
+      setSelectedSessionId(newChat.id);
+      
+      // Reset chat messages to initial greeting
+      setMessages([{
+        id: "initial-ai-message-new",
+        isUser: false,
+        content: "Hello! How can I help you today?",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      
+      // Reset temporary form values
+      setTempSessionName("");
+      setTempSelectedLibraryId("");
+      setTempSelectedRetrieverId("");
+      
+      // Close dialogs
+      setIsNewSessionDialogOpen(false);
+      setIsNewChatPopoverOpen(false);
+
+      console.log('Successfully created new chat session:', newChat);
+    } catch (error) {
+      console.error('Failed to create new chat session:', error);
+      // You might want to show an error message to the user here
+    }
   };
 
   // Delete a chat session
@@ -681,24 +827,54 @@ export default function ChatPage() {
   };
 
   // Create a chat session from an existing one
-  const loadExistingSession = (sessionId: string) => {
+  const loadExistingSession = async (sessionId: string) => {
     const session = chatSessions.find(s => s.id === sessionId);
     
     if (session) {
       // Set configuration based on the selected session
       setSelectedLibrary(session.library);
       setSelectedRAGConfigId(session.ragConfigId);
-      
-      // Reset chat messages to initial greeting
-      setMessages([{
-        id: "initial-ai-message-existing",
-        isUser: false,
-        content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }]);
-      
-      // Update the selected session id
       setSelectedSessionId(sessionId);
+      
+      // Fetch actual messages from API
+      try {
+        const fetchedMessages = await fetchChatMessages(sessionId);
+        
+        if (fetchedMessages.length > 0) {
+          // Use actual messages from API
+          setMessages(fetchedMessages);
+        } else {
+          // No messages yet, show initial greeting
+          setMessages([{
+            id: "initial-ai-message-existing",
+            isUser: false,
+            content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }]);
+        }
+      } catch (error) {
+        // On error, show fallback message with error indicator
+        setMessages([{
+          id: "initial-ai-message-error",
+          isUser: false,
+          content: `Hello! I've loaded the "${session.name}" session, but couldn't fetch previous messages. How can I help you today?`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      }
+      
+      // Fetch retriever details to get actual session information
+      try {
+        // First get chat details to get retriever_id
+        const chatResponse = await fetch(`${API_URL}/chat/${sessionId}`);
+        if (chatResponse.ok) {
+          const chatDetail: ApiChatDetail = await chatResponse.json();
+          if (chatDetail.retriever_id) {
+            await fetchRetrieverDetails(chatDetail.retriever_id);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch retriever details for session:', error);
+      }
       
       // Close dialog
       setIsExistingSessionDialogOpen(false);
@@ -795,7 +971,6 @@ export default function ChatPage() {
           max_tokens: 4096, // Default value
           temperature: apiChat.config.temperature,
           top_p: apiChat.config.top_p,
-          // Note: API top_k is for retrieval, not generation
         }
       }
     };
@@ -834,16 +1009,151 @@ export default function ChatPage() {
       console.error('Failed to fetch chat sessions:', error);
       setChatsError(error instanceof Error ? error.message : 'Failed to fetch chat sessions');
       
-      // Fallback to initial mock data on error
-      setChatSessions(initialChatSessions);
-      if (initialChatSessions.length > 0 && !selectedSessionId) {
-        const firstSession = initialChatSessions[0];
-        setSelectedSessionId(firstSession.id);
-        setSelectedLibrary(firstSession.library);
-        setSelectedRAGConfigId(firstSession.ragConfigId);
-      }
+      setChatSessions([]);
+      setSelectedSessionId("");
+      setSelectedLibrary(libraries[0].id);
+      setSelectedRAGConfigId(availableRAGConfigs[0]?.id || "");
     } finally {
       setIsLoadingChats(false);
+    }
+  };
+
+  // Add function to fetch chat messages from API
+  const fetchChatMessages = async (chatId: string) => {
+    try {
+      setIsLoadingMessages(true);
+      setMessagesError(null);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/chat/${chatId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const chatDetail: ApiChatDetail = await response.json();
+      
+      // Transform API messages to local Message format
+      const transformedMessages = transformApiMessagesToLocal(chatDetail.messages);
+      
+      return transformedMessages;
+    } catch (error) {
+      console.error('Failed to fetch chat messages:', error);
+      setMessagesError(error instanceof Error ? error.message : 'Failed to fetch chat messages');
+      throw error;
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
+  // Transform API messages to local Message format
+  const transformApiMessagesToLocal = (apiMessages: ApiMessage[]): Message[] => {
+    // Sort messages by creation time to ensure correct order
+    const sortedMessages = [...apiMessages].sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    
+    return sortedMessages.map((apiMsg, index) => {
+      const timestamp = new Date(apiMsg.created_at).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
+      return {
+        id: apiMsg.id,
+        isUser: apiMsg.role === 'user',
+        content: apiMsg.content,
+        timestamp: timestamp,
+      };
+    });
+  };
+
+  // Add function to fetch retriever details from API
+  const fetchRetrieverDetails = async (retrieverId: string) => {
+    try {
+      setIsLoadingRetriever(true);
+      setRetrieverError(null);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/retriever/${retrieverId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const retrieverDetail: ApiRetrieverDetail = await response.json();
+      
+      setCurrentRetriever(retrieverDetail);
+      setRetrievalTopK(retrieverDetail.top_k);
+      
+      return retrieverDetail;
+    } catch (error) {
+      console.error('Failed to fetch retriever details:', error);
+      setRetrieverError(error instanceof Error ? error.message : 'Failed to fetch retriever details');
+      throw error;
+    } finally {
+      setIsLoadingRetriever(false);
+    }
+  };
+
+  // Add functions to fetch libraries and retrievers from API
+  const fetchLibraries = async () => {
+    try {
+      setIsLoadingLibraries(true);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/library/`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const libraries: ApiLibrary[] = await response.json();
+      setApiLibraries(libraries);
+      
+      // Set default selection to first library
+      if (libraries.length > 0 && !tempSelectedLibraryId) {
+        setTempSelectedLibraryId(libraries[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch libraries:', error);
+    } finally {
+      setIsLoadingLibraries(false);
+    }
+  };
+
+  const fetchRetrievers = async () => {
+    try {
+      setIsLoadingRetrievers(true);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/retriever/`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: ApiRetrieverListResponse = await response.json();
+      // Only show active retrievers
+      const activeRetrievers = data.retrievers.filter(r => r.status === 'active');
+      setApiRetrievers(activeRetrievers);
+      
+      // Set default selection to first active retriever
+      if (activeRetrievers.length > 0 && !tempSelectedRetrieverId) {
+        setTempSelectedRetrieverId(activeRetrievers[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch retrievers:', error);
+    } finally {
+      setIsLoadingRetrievers(false);
     }
   };
 
@@ -871,9 +1181,12 @@ export default function ChatPage() {
                       className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                       onClick={() => {
                         setIsNewSessionDialogOpen(true);
-                        setTempLibrary(selectedLibrary);
-                        setTempRAGConfigId(selectedRAGConfigId);
+                        setTempSelectedLibraryId("");
+                        setTempSelectedRetrieverId("");
                         setTempSessionName("");
+                        // Fetch API data when dialog opens
+                        fetchLibraries();
+                        fetchRetrievers();
                       }}
                     >
                       <div className="flex items-center">
@@ -966,15 +1279,52 @@ export default function ChatPage() {
           <div className="flex-1 flex flex-col relative">
             <div className="flex-1 p-6 overflow-y-auto">
               <div className="space-y-2 max-w-4xl mx-auto">
-                {messages.map((msg) => (
+                {/* Show loading state when fetching messages */}
+                {isLoadingMessages && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <div className="inline-flex items-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Loading conversation history...
+                    </div>
+                  </div>
+                )}
+                
+                {/* Show error message if there's an error loading messages */}
+                {messagesError && !isLoadingMessages && (
+                  <div className="text-center text-red-600 py-4">
+                    <div className="text-sm">Failed to load messages: {messagesError}</div>
+                  </div>
+                )}
+                
+                {/* Show messages only when not loading */}
+                {!isLoadingMessages && messages.map((msg) => (
                   <ChatMessage
                     key={msg.id}
                     isUser={msg.isUser}
                     content={msg.content}
                     timestamp={msg.timestamp}
-                    source={msg.source}
                   />
                 ))}
+                
+                {/* Show welcome message when no session is selected and not loading */}
+                {!isLoadingMessages && !selectedSessionId && chatSessions.length === 0 && !isLoadingChats && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <div className="text-lg font-medium mb-2">Welcome to RAG Chat</div>
+                    <div className="text-sm">Create a new chat session to get started</div>
+                  </div>
+                )}
+                
+                {/* Show session selection message when sessions exist but none selected */}
+                {!isLoadingMessages && !selectedSessionId && chatSessions.length > 0 && !isLoadingChats && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <div className="text-lg font-medium mb-2">Select a Chat Session</div>
+                    <div className="text-sm">Choose a session from the sidebar to continue chatting</div>
+                  </div>
+                )}
+                
                  {isLoading && (
                   <ChatMessage
                     isUser={false}
@@ -990,7 +1340,7 @@ export default function ChatPage() {
               <div className="flex max-w-4xl mx-auto">
                 <Input 
                   type="text" 
-                  placeholder="Type your message here..." 
+                  placeholder={selectedSessionId ? "Type your message here..." : "Select a chat session to start messaging..."} 
                   className="flex-1 rounded-r-none focus-visible:ring-1 text-black"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
@@ -1000,12 +1350,12 @@ export default function ChatPage() {
                       handleSendMessage();
                     }
                   }}
-                  disabled={isLoading}
+                  disabled={isLoading || !selectedSessionId}
                 />
                 <Button 
                   className="rounded-l-none text-black"
                   onClick={handleSendMessage} 
-                  disabled={isLoading || inputValue.trim() === ""}
+                  disabled={isLoading || inputValue.trim() === "" || !selectedSessionId}
                 >
                   {isLoading ? (
                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1023,25 +1373,108 @@ export default function ChatPage() {
             {/* Current Session Info */}
             <div>
               <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Current Session</h3>
-              <div className="p-3 bg-muted rounded-md">
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Library</div>
-                    <div className="font-medium">{selectedLibraryData?.name || "None"}</div>
-                    {selectedLibraryData?.description && (
-                      <div className="text-xs text-muted-foreground mt-1">{selectedLibraryData.description}</div>
-                    )}
+              {isLoadingRetriever ? (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="text-center text-muted-foreground">
+                    <div className="inline-flex items-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Loading session info...
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">RAG Configuration</div>
-                    <div className="font-medium">{availableRAGConfigs.find(c => c.id === selectedRAGConfigId)?.name || "None"}</div>
-                    {availableRAGConfigs.find(c => c.id === selectedRAGConfigId)?.description && (
-                      <div className="text-xs text-muted-foreground mt-1">{availableRAGConfigs.find(c => c.id === selectedRAGConfigId)?.description}</div>
+                </div>
+              ) : retrieverError ? (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="text-sm text-red-600">
+                    Failed to load session info: {retrieverError}
+                  </div>
+                </div>
+              ) : currentRetriever ? (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Library</div>
+                      <div className="font-medium">{currentRetriever.library_name || "Unknown"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Retriever Configuration</div>
+                      <div className="font-medium">{currentRetriever.name}</div>
+                      {currentRetriever.description && (
+                        <div className="text-xs text-muted-foreground mt-1">{currentRetriever.description}</div>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Pipeline</div>
+                      <div className="space-y-1">
+                        {currentRetriever.parser_info && (
+                          <div className="text-xs">
+                            <span className="font-medium">Parser:</span> {currentRetriever.parser_info.name}
+                          </div>
+                        )}
+                        {currentRetriever.chunker_info && (
+                          <div className="text-xs">
+                            <span className="font-medium">Chunker:</span> {currentRetriever.chunker_info.name}
+                          </div>
+                        )}
+                        {currentRetriever.indexer_info && (
+                          <div className="text-xs">
+                            <span className="font-medium">Indexer:</span> {currentRetriever.indexer_info.name}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {currentRetriever.total_chunks && (
+                      <div>
+                        <div className="text-xs text-muted-foreground">Total Chunks</div>
+                        <div className="text-sm font-medium">{currentRetriever.total_chunks.toLocaleString()}</div>
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
+              ) : selectedSessionId ? (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="text-sm text-muted-foreground">
+                    Select a session to view configuration details
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="text-sm text-muted-foreground">
+                    No session selected
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Top K Retrieval Parameter */}
+            {selectedSessionId && (
+              <div>
+                <h3 className="font-semibold mb-2 p-2 border-b pb-3 text-lg font-heading">Retrieval Settings</h3>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="retrieval-top-k" className="text-sm">Top K Documents</Label>
+                    <p className="text-xs text-muted-foreground">Number of documents to retrieve for context</p>
+                    <Input
+                      id="retrieval-top-k"
+                      type="number"
+                      value={retrievalTopK}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val >= 1 && val <= 50) {
+                          setRetrievalTopK(val);
+                        }
+                      }}
+                      min={1}
+                      max={50}
+                      step={1}
+                      placeholder="5"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Generator Parameters */}
             {selectedSessionId && (
@@ -1171,6 +1604,9 @@ export default function ChatPage() {
                       if (currentSession && currentSession.generatorConfig) {
                         setGeneratorParams({...currentSession.generatorConfig.parameterValues});
                       }
+                      if (currentRetriever) {
+                        setRetrievalTopK(currentRetriever.top_k);
+                      }
                     }}
                     disabled={isApplying}
                     className="text-xs"
@@ -1272,37 +1708,72 @@ export default function ChatPage() {
                     Library
                   </Label>
                   <div className="col-span-3">
-                    <Select value={tempLibrary} onValueChange={setTempLibrary}>
-                      <SelectTrigger id="new-library">
-                        <SelectValue placeholder="Select a library" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {libraries.map(lib => (
-                          <SelectItem key={lib.id} value={lib.id}>
-                            {lib.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {isLoadingLibraries ? (
+                      <div className="text-sm text-muted-foreground">Loading libraries...</div>
+                    ) : (
+                      <Select value={tempSelectedLibraryId} onValueChange={setTempSelectedLibraryId}>
+                        <SelectTrigger id="new-library">
+                          <SelectValue placeholder="Select a library">
+                            {tempSelectedLibraryId ? 
+                              apiLibraries.find(lib => lib.id === tempSelectedLibraryId)?.library_name || "Unknown Library"
+                              : "Select a library"
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {apiLibraries.map(lib => (
+                            <SelectItem key={lib.id} value={lib.id}>
+                              <div className="flex flex-col space-y-1 py-1">
+                                <div className="font-medium">{lib.library_name}</div>
+                                {lib.description && (
+                                  <div className="text-xs text-muted-foreground line-clamp-2">{lib.description}</div>
+                                )}
+                                <div className="text-xs text-muted-foreground">
+                                  {lib.stats.file_count} files, {(lib.stats.total_size / 1024 / 1024).toFixed(1)} MB
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="new-rag-config" className="text-right">
-                    Configuration
+                  <Label htmlFor="new-retriever" className="text-right">
+                    Retriever
                   </Label>
                   <div className="col-span-3">
-                    <Select value={tempRAGConfigId} onValueChange={setTempRAGConfigId}>
-                      <SelectTrigger id="new-rag-config">
-                        <SelectValue placeholder="Select a RAG configuration" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableRAGConfigs.map(config => (
-                          <SelectItem key={config.id} value={config.id}>
-                            {config.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {isLoadingRetrievers ? (
+                      <div className="text-sm text-muted-foreground">Loading retrievers...</div>
+                    ) : (
+                      <Select value={tempSelectedRetrieverId} onValueChange={setTempSelectedRetrieverId}>
+                        <SelectTrigger id="new-retriever">
+                          <SelectValue placeholder="Select a retriever configuration">
+                            {tempSelectedRetrieverId ? 
+                              apiRetrievers.find(r => r.id === tempSelectedRetrieverId)?.name || "Unknown Retriever"
+                              : "Select a retriever configuration"
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {apiRetrievers.map(retriever => (
+                            <SelectItem key={retriever.id} value={retriever.id}>
+                              <div className="flex flex-col space-y-1 py-1">
+                                <div className="font-medium">{retriever.name}</div>
+                                {retriever.description && (
+                                  <div className="text-xs text-muted-foreground line-clamp-2">{retriever.description}</div>
+                                )}
+                                <div className="text-xs text-muted-foreground">
+                                  {retriever.total_chunks ? `${retriever.total_chunks.toLocaleString()} chunks` : 'No chunks'} • 
+                                  Library: {apiLibraries.find(lib => lib.id === retriever.library_id)?.library_name || 'Unknown'}
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1312,11 +1783,16 @@ export default function ChatPage() {
                   onClick={() => {
                     setIsNewSessionDialogOpen(false);
                     setTempSessionName("");
+                    setTempSelectedLibraryId("");
+                    setTempSelectedRetrieverId("");
                   }}
                 >
                   Cancel
                 </Button>
-                <Button onClick={createNewChatSession}>
+                <Button 
+                  onClick={createNewChatSession}
+                  disabled={!tempSelectedRetrieverId || isLoadingLibraries || isLoadingRetrievers}
+                >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
                     <path d="M12 5v14M5 12h14"/>
                   </svg>
