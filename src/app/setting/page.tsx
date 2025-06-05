@@ -9,7 +9,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription
+  CardDescription,
+  CardFooter
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,6 +22,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Settings, Eye } from 'lucide-react';
 
 // API Configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -417,27 +429,27 @@ const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[]
   });
 };
 
-export default function ConfigureRAGPage() {
+export default function RetrieverPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Main state
+  const [retrievers, setRetrievers] = useState<ApiRetrieverEntry[]>([]);
+  const [isLoadingRetrievers, setIsLoadingRetrievers] = useState(true);
+  const [retrieversError, setRetrieversError] = useState<string | null>(null);
+
   const [sources, setSources] = useState<Source[]>([]);
-  
-  // API retriever state
-  const [apiRetrievers, setApiRetrievers] = useState<ApiRetrieverEntry[]>([]);
-  const [apiRetrieversLoading, setApiRetrieversLoading] = useState(true);
-  const [apiRetrieversError, setApiRetrieversError] = useState<string | null>(null);
-  
+  const [isCreatingRetriever, setIsCreatingRetriever] = useState(false);
+
+  // Create form state
   const [currentRetrieverName, setCurrentRetrieverName] = useState<string>("");
   const [currentRetrieverDescription, setCurrentRetrieverDescription] = useState<string>("");
   const [selectedParser, setSelectedParser] = useState<string>("");
   const [selectedChunker, setSelectedChunker] = useState<string>("");
   const [selectedIndexer, setSelectedIndexer] = useState<string>("");
-  const [parserParams, setParserParams] = useState<{ [key: string]: string | number | boolean }>({});
-  const [chunkerParams, setChunkerParams] = useState<{ [key: string]: string | number | boolean }>({});
-  const [indexerParams, setIndexerParams] = useState<{ [key: string]: string | number | boolean }>({});
   const [selectedSourceForContext, setSelectedSourceForContext] = useState<string>("");
 
+  // Module state
   const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
   const [apiParsersLoading, setApiParsersLoading] = useState(true);
   const [apiParsersError, setApiParsersError] = useState<string | null>(null);
@@ -450,287 +462,122 @@ export default function ConfigureRAGPage() {
   const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
   const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
 
-  // API creation state
-  const [isCreatingRetriever, setIsCreatingRetriever] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const CREATE_NEW_CONFIG_VALUE = "__CREATE_NEW__";
-
-  // Function to reset form to a "create new" state
-  const resetFormToCreateNew = () => {
-    setCurrentRetrieverName("");
-    setCurrentRetrieverDescription("");
-    setSelectedParser("");
-    setParserParams({});
-    setSelectedChunker("");
-    setChunkerParams({});
-    setSelectedIndexer("");
-    setIndexerParams({});
-    setSelectedSourceForContext("");
-  };
-
+  // Fetch all data on component mount
   useEffect(() => {
-    const fetchLibraries = async () => {
-      try {
-        if (!API_URL) throw new Error('API_URL not configured');
-        const response = await fetch(`${API_URL}/library/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const libraries = await response.json();
-        
-        // Transform library data to sources format
-        const sourcesFromLibraries: Source[] = libraries.map((lib: any) => ({
-          id: lib.id,
-          name: lib.library_name,
-          description: lib.description || '',
-          type: 'library' as const
-        }));
-        
-        setSources(sourcesFromLibraries);
-      } catch (error) {
-        console.error('Failed to fetch libraries:', error);
-        // Fallback to localStorage if API fails
-        const storedSources = localStorage.getItem('sources');
-        if (storedSources) setSources(JSON.parse(storedSources));
-      }
-    };
-    
+    fetchRetrievers();
     fetchLibraries();
-  }, []);
-
-  useEffect(() => {
-    const editId = searchParams.get('edit');
-
-    if (editId && selectedParser !== "") {
-        const retrieverToLoad = apiRetrievers.find((rc: ApiRetrieverEntry) => rc.id === editId);
-        if (retrieverToLoad) {
-            setCurrentRetrieverName(retrieverToLoad.name); // Load actual name for editing
-            setCurrentRetrieverDescription(retrieverToLoad.description || "");
-            setSelectedParser(retrieverToLoad.parser_id);
-            setParserParams({...retrieverToLoad});
-            setSelectedChunker(retrieverToLoad.chunker_id);
-            setChunkerParams({...retrieverToLoad});
-            setSelectedIndexer(retrieverToLoad.indexer_id);
-            setIndexerParams({...retrieverToLoad});
-        } else {
-            // editId in URL is invalid, reset to create new
-            resetFormToCreateNew();
-        }
-    } else if (!editId && selectedParser !== "") {
-        resetFormToCreateNew();
-    } else if (!editId && selectedParser === "") {
-        setCurrentRetrieverName("");
-        setCurrentRetrieverDescription("");
-        setSelectedParser("");
-        setParserParams({});
-        setSelectedChunker("");
-        setChunkerParams({});
-        setSelectedIndexer("");
-        setIndexerParams({});
-        setSelectedSourceForContext("");
-    }
-  }, [searchParams]); // Depend on searchParams
-
-  // Fetch parsers
-  useEffect(() => {
-    const fetchParsers = async () => {
-      try {
-        setApiParsersLoading(true);
-        setApiParsersError(null);
-        if (!API_URL) throw new Error('API_URL not configured');
-        const response = await fetch(`${API_URL}/parser/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data: ApiParserListResponse = await response.json();
-        setApiFetchedParsers(transformApiParsersToModules(data.parsers));
-      } catch (error) {
-        console.error('Failed to fetch parsers:', error);
-        setApiParsersError(error instanceof Error ? error.message : 'Failed to fetch parsers');
-        setApiFetchedParsers([]);
-      } finally {
-        setApiParsersLoading(false);
-      }
-    };
     fetchParsers();
-  }, []);
-
-  // Fetch chunkers
-  useEffect(() => {
-    const fetchChunkers = async () => {
-      try {
-        setApiChunkersLoading(true);
-        setApiChunkersError(null);
-        if (!API_URL) throw new Error('API_URL not configured');
-        const response = await fetch(`${API_URL}/chunker/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data: ApiChunkerListResponse = await response.json();
-        setApiFetchedChunkers(transformApiChunkersToModules(data.chunkers));
-      } catch (error) {
-        console.error('Failed to fetch chunkers:', error);
-        setApiChunkersError(error instanceof Error ? error.message : 'Failed to fetch chunkers');
-        setApiFetchedChunkers([]);
-      } finally {
-        setApiChunkersLoading(false);
-      }
-    };
     fetchChunkers();
-  }, []);
-
-  // Fetch indexers
-  useEffect(() => {
-    const fetchIndexers = async () => {
-      try {
-        setApiIndexersLoading(true);
-        setApiIndexersError(null);
-        if (!API_URL) throw new Error('API_URL not configured');
-        const response = await fetch(`${API_URL}/indexer/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data: ApiIndexerListResponse = await response.json();
-        setApiFetchedIndexers(transformApiIndexersToModules(data.indexers));
-      } catch (error) {
-        console.error('Failed to fetch indexers:', error);
-        setApiIndexersError(error instanceof Error ? error.message : 'Failed to fetch indexers');
-        setApiFetchedIndexers([]);
-      } finally {
-        setApiIndexersLoading(false);
-      }
-    };
     fetchIndexers();
   }, []);
 
-  // Fetch API retrievers
-  useEffect(() => {
-    const fetchApiRetrievers = async () => {
-      try {
-        setApiRetrieversLoading(true);
-        setApiRetrieversError(null);
-        if (!API_URL) throw new Error('API_URL not configured');
-        const response = await fetch(`${API_URL}/retriever/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data: ApiRetrieverListResponse = await response.json();
-        setApiRetrievers(data.retrievers);
-      } catch (error) {
-        console.error('Failed to fetch API retrievers:', error);
-        setApiRetrieversError(error instanceof Error ? error.message : 'Failed to fetch API retrievers');
-        setApiRetrievers([]);
-      } finally {
-        setApiRetrieversLoading(false);
-      }
-    };
-    fetchApiRetrievers();
-  }, []);
-
-  const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
-    let modulesOfType: Module[];
-    if (moduleType === 'parser') modulesOfType = apiFetchedParsers;
-    else if (moduleType === 'chunker') modulesOfType = apiFetchedChunkers;
-    else if (moduleType === 'indexer') modulesOfType = apiFetchedIndexers;
-    else modulesOfType = [];
-    
-    const module = modulesOfType.find(m => m.id === moduleId);
-    if (!module) return {};
-    const params: { [key: string]: string | number | boolean } = {};
-    module.parameters.forEach(p => { params[p.id] = p.defaultValue; });
-    return params;
+  const fetchRetrievers = async () => {
+    try {
+      setIsLoadingRetrievers(true);
+      setRetrieversError(null);
+      if (!API_URL) throw new Error('API_URL not configured');
+      const response = await fetch(`${API_URL}/retriever/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data: ApiRetrieverListResponse = await response.json();
+      setRetrievers(data.retrievers);
+    } catch (error) {
+      console.error('Failed to fetch retrievers:', error);
+      setRetrieversError(error instanceof Error ? error.message : 'Failed to fetch retrievers');
+      setRetrievers([]);
+    } finally {
+      setIsLoadingRetrievers(false);
+    }
   };
 
-  // Function to fetch detailed component info from API
-  const fetchComponentDetails = async (componentType: 'parser' | 'chunker' | 'indexer', componentId: string) => {
+  const fetchLibraries = async () => {
     try {
       if (!API_URL) throw new Error('API_URL not configured');
-      const response = await fetch(`${API_URL}/${componentType}/${componentId}`);
+      const response = await fetch(`${API_URL}/library/`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
+      const libraries = await response.json();
+      
+      const sourcesFromLibraries: Source[] = libraries.map((lib: any) => ({
+        id: lib.id,
+        name: lib.library_name,
+        description: lib.description || '',
+        type: 'library' as const
+      }));
+      
+      setSources(sourcesFromLibraries);
     } catch (error) {
-      console.error(`Failed to fetch ${componentType} details:`, error);
-      return null;
+      console.error('Failed to fetch libraries:', error);
+      setSources([]);
     }
   };
 
-  // Function to load API retriever into form
-  const loadApiRetriever = async (retrieverConfig: ApiRetrieverEntry) => {
-    // Create a unique name for the new retriever based on the template
-    const timestamp = new Date().toISOString().slice(11, 19).replace(/:/g, '');
-    const newRetrieverName = `${retrieverConfig.name}_copy_${timestamp}`;
-    
-    setCurrentRetrieverName(newRetrieverName);
-    setCurrentRetrieverDescription(retrieverConfig.description || "");
-    
-    // Set the component IDs
-    setSelectedParser(retrieverConfig.parser_id);
-    setSelectedChunker(retrieverConfig.chunker_id);
-    setSelectedIndexer(retrieverConfig.indexer_id);
-    
-    // Set the library ID if available
-    if (retrieverConfig.library_id) {
-      setSelectedSourceForContext(retrieverConfig.library_id);
-    }
-    
-    // Fetch detailed component information and set parameters
+  const fetchParsers = async () => {
     try {
-      const [parserDetails, chunkerDetails, indexerDetails] = await Promise.all([
-        fetchComponentDetails('parser', retrieverConfig.parser_id),
-        fetchComponentDetails('chunker', retrieverConfig.chunker_id),
-        fetchComponentDetails('indexer', retrieverConfig.indexer_id)
-      ]);
-
-      // Set parser params
-      if (parserDetails) {
-        setParserParams({ ...parserDetails.params });
-      } else {
-        setParserParams(initializeDefaultParamsForModule('parser', retrieverConfig.parser_id));
-      }
-
-      // Set chunker params  
-      if (chunkerDetails) {
-        const chunkerParamsFromApi: { [key: string]: string | number | boolean } = { ...chunkerDetails.params };
-        if (chunkerDetails.chunk_method) chunkerParamsFromApi['chunk_method'] = chunkerDetails.chunk_method;
-        if (chunkerDetails.chunk_size !== null) chunkerParamsFromApi['chunk_size'] = chunkerDetails.chunk_size;
-        if (chunkerDetails.chunk_overlap !== null) chunkerParamsFromApi['chunk_overlap'] = chunkerDetails.chunk_overlap;
-        setChunkerParams(chunkerParamsFromApi);
-      } else {
-        setChunkerParams(initializeDefaultParamsForModule('chunker', retrieverConfig.chunker_id));
-      }
-
-      // Set indexer params
-      if (indexerDetails) {
-        const indexerParamsFromApi: { [key: string]: string | number | boolean } = { ...indexerDetails.params };
-        if (indexerDetails.index_type) indexerParamsFromApi['index_type'] = indexerDetails.index_type;
-        if (indexerDetails.model) indexerParamsFromApi['model'] = indexerDetails.model;
-        setIndexerParams(indexerParamsFromApi);
-      } else {
-        setIndexerParams(initializeDefaultParamsForModule('indexer', retrieverConfig.indexer_id));
-      }
-
+      setApiParsersLoading(true);
+      setApiParsersError(null);
+      if (!API_URL) throw new Error('API_URL not configured');
+      const response = await fetch(`${API_URL}/parser/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data: ApiParserListResponse = await response.json();
+      setApiFetchedParsers(transformApiParsersToModules(data.parsers));
     } catch (error) {
-      console.error('Error loading component details:', error);
-      // Fallback to default params if API calls fail
-      setParserParams(initializeDefaultParamsForModule('parser', retrieverConfig.parser_id));
-      setChunkerParams(initializeDefaultParamsForModule('chunker', retrieverConfig.chunker_id));
-      setIndexerParams(initializeDefaultParamsForModule('indexer', retrieverConfig.indexer_id));
+      console.error('Failed to fetch parsers:', error);
+      setApiParsersError(error instanceof Error ? error.message : 'Failed to fetch parsers');
+      setApiFetchedParsers([]);
+    } finally {
+      setApiParsersLoading(false);
     }
   };
 
-  const handleNewConfigParserSelect = (moduleId: string) => {
-    setSelectedParser(moduleId);
-    setParserParams(initializeDefaultParamsForModule('parser', moduleId));
-  };
-  const handleNewConfigChunkerSelect = (moduleId: string) => {
-    setSelectedChunker(moduleId);
-    setChunkerParams(initializeDefaultParamsForModule('chunker', moduleId));
-  };
-  const handleNewConfigIndexerSelect = (moduleId: string) => {
-    setSelectedIndexer(moduleId);
-    setIndexerParams(initializeDefaultParamsForModule('indexer', moduleId));
+  const fetchChunkers = async () => {
+    try {
+      setApiChunkersLoading(true);
+      setApiChunkersError(null);
+      if (!API_URL) throw new Error('API_URL not configured');
+      const response = await fetch(`${API_URL}/chunker/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data: ApiChunkerListResponse = await response.json();
+      setApiFetchedChunkers(transformApiChunkersToModules(data.chunkers));
+    } catch (error) {
+      console.error('Failed to fetch chunkers:', error);
+      setApiChunkersError(error instanceof Error ? error.message : 'Failed to fetch chunkers');
+      setApiFetchedChunkers([]);
+    } finally {
+      setApiChunkersLoading(false);
+    }
   };
 
-  const handleNewConfigParamChange = (
-    moduleType: ModuleType, 
-    paramId: string, 
-    value: string | number | boolean
-  ) => {
-    switch (moduleType) {
-      case 'parser': setParserParams(prev => ({ ...prev, [paramId]: value })); break;
-      case 'chunker': setChunkerParams(prev => ({ ...prev, [paramId]: value })); break;
-      case 'indexer': setIndexerParams(prev => ({ ...prev, [paramId]: value })); break;
+  const fetchIndexers = async () => {
+    try {
+      setApiIndexersLoading(true);
+      setApiIndexersError(null);
+      if (!API_URL) throw new Error('API_URL not configured');
+      const response = await fetch(`${API_URL}/indexer/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data: ApiIndexerListResponse = await response.json();
+      setApiFetchedIndexers(transformApiIndexersToModules(data.indexers));
+    } catch (error) {
+      console.error('Failed to fetch indexers:', error);
+      setApiIndexersError(error instanceof Error ? error.message : 'Failed to fetch indexers');
+      setApiFetchedIndexers([]);
+    } finally {
+      setApiIndexersLoading(false);
     }
+  };
+
+  const resetCreateForm = () => {
+    setCurrentRetrieverName("");
+    setCurrentRetrieverDescription("");
+    setSelectedParser("");
+    setSelectedChunker("");
+    setSelectedIndexer("");
+    setSelectedSourceForContext("");
+  };
+
+  const handleCreateRetriever = () => {
+    resetCreateForm();
+    setIsCreatingRetriever(true);
   };
 
   const handleSaveRetriever = async () => {
@@ -745,7 +592,7 @@ export default function ConfigureRAGPage() {
     }
 
     try {
-      setIsCreatingRetriever(true);
+      setIsSubmitting(true);
 
       const requestBody: CreateRetrieverRequest = {
         name: currentRetrieverName.trim(),
@@ -754,8 +601,8 @@ export default function ConfigureRAGPage() {
         parser_id: selectedParser,
         chunker_id: selectedChunker,
         indexer_id: selectedIndexer,
-        top_k: 10, // Default value
-        params: {}, // Could be extended to include custom params
+        top_k: 10,
+        params: {},
         collection_name: `${currentRetrieverName.trim().replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`
       };
 
@@ -776,198 +623,302 @@ export default function ConfigureRAGPage() {
 
       const result: CreateRetrieverResponse = await response.json();
       
-      alert(`Retriever configuration created successfully!\n\nRetriever ID: ${result.retriever_id}\nStatus: ${result.status}\nCollection: ${result.collection_name || 'N/A'}\nTotal Chunks: ${result.total_chunks || 'N/A'}`);
+      alert(`Retriever created successfully!\n\nRetriever ID: ${result.retriever_id}\nStatus: ${result.status}\nTotal Chunks: ${result.total_chunks || 'N/A'}`);
       
-      // Navigate back to eval page or refresh the current page
-      router.push('/eval');
+      // Refresh the retrievers list and close dialog
+      await fetchRetrievers();
+      setIsCreatingRetriever(false);
 
     } catch (error) {
       console.error('Failed to create retriever:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create retriever configuration';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create retriever';
       alert(`Error creating retriever: ${errorMessage}`);
     } finally {
-      setIsCreatingRetriever(false);
+      setIsSubmitting(false);
     }
   };
 
-  const renderModuleSelector = (
-    moduleType: ModuleType,
-    selectedModuleId: string,
-    onSelectModule: (moduleId: string) => void,
-    currentParams: { [key: string]: string | number | boolean },
-    onParamChange: (moduleType: ModuleType, paramId: string, value: string | number | boolean) => void
-  ) => {
-    let modulesOfType: Module[];
-    let isLoading = false;
-    let errorMessage: string | null = null;
-    
-    if (moduleType === 'parser') { modulesOfType = apiFetchedParsers; isLoading = apiParsersLoading; errorMessage = apiParsersError; }
-    else if (moduleType === 'chunker') { modulesOfType = apiFetchedChunkers; isLoading = apiChunkersLoading; errorMessage = apiChunkersError; }
-    else if (moduleType === 'indexer') { modulesOfType = apiFetchedIndexers; isLoading = apiIndexersLoading; errorMessage = apiIndexersError; }
-    else { modulesOfType = []; isLoading = false; errorMessage = null; }
-    
-    const selectedModuleDetails = modulesOfType.find(m => m.id === selectedModuleId);
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'active': return 'default';
+      case 'processing': return 'secondary';
+      case 'error': return 'destructive';
+      case 'inactive': return 'outline';
+      default: return 'secondary';
+    }
+  };
 
-    return (
-      <div className="space-y-3 p-4 border rounded-md bg-muted/20">
-        <div className="flex justify-between items-center">
-            <Label htmlFor={`${moduleType}-select`} className="text-md font-semibold capitalize">{moduleType}</Label>
-            {selectedModuleDetails && <span className="text-xs text-muted-foreground">{selectedModuleDetails.name}</span>}
-        </div>
-        
-        {isLoading && <div className="text-sm text-muted-foreground">Loading {moduleType}s...</div>}
-        {errorMessage && <div className="text-sm text-red-600">Error loading {moduleType}s: {errorMessage}</div>}
-        {!isLoading && !errorMessage && modulesOfType.length === 0 && <div className="text-sm text-muted-foreground">No {moduleType}s available.</div>}
-        
-        <Select value={selectedModuleId} onValueChange={onSelectModule} disabled={isLoading || modulesOfType.length === 0}>
-          <SelectTrigger id={`${moduleType}-select`}>
-            <SelectValue placeholder={isLoading ? "Loading..." : errorMessage ? `Error loading` : modulesOfType.length === 0 ? `No ${moduleType}s` : `Select ${moduleType}`} />
-          </SelectTrigger>
-          <SelectContent>
-            {modulesOfType.map(module => (<SelectItem key={module.id} value={module.id}>{module.name}</SelectItem>))}
-          </SelectContent>
-        </Select>
-        {selectedModuleDetails && selectedModuleDetails.description && <p className="text-xs text-muted-foreground italic pt-1">{selectedModuleDetails.description}</p>}
+  const getParserName = (parserId: string) => {
+    return apiFetchedParsers.find(p => p.id === parserId)?.name || parserId;
+  };
 
-        {/* Parameters section - Display only, no editing */}
-        {selectedModuleDetails && selectedModuleDetails.parameters.length > 0 && (
-          <div className="mt-4 space-y-3 pt-3 border-t border-dashed">
-            <h4 className="text-sm font-medium text-foreground pt-1">Parameters (Read-only):</h4>
-            <div className="grid gap-3">
-              {selectedModuleDetails.parameters.map(param => (
-                <div key={param.id} className="bg-muted/30 p-3 rounded-md">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="text-sm font-medium">{param.name}</span>
-                    <span className="text-xs text-muted-foreground px-2 py-1 bg-background rounded">
-                      {param.type}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-sm text-foreground font-mono bg-background px-2 py-1 rounded border">
-                      {param.type === 'boolean' 
-                        ? (currentParams[param.id] as boolean ? 'true' : 'false')
-                        : String(currentParams[param.id] ?? param.defaultValue)
-                      }
-                    </div>
-                    {param.description && (
-                      <p className="text-xs text-muted-foreground">{param.description}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
+  const getChunkerName = (chunkerId: string) => {
+    return apiFetchedChunkers.find(c => c.id === chunkerId)?.name || chunkerId;
+  };
+
+  const getIndexerName = (indexerId: string) => {
+    return apiFetchedIndexers.find(i => i.id === indexerId)?.name || indexerId;
+  };
+
+  const getLibraryName = (libraryId: string) => {
+    return sources.find(s => s.id === libraryId)?.name || libraryId;
   };
 
   return (
     <PageLayout>
-      <div className="space-y-6 p-4 max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-            <div>
-                <h1 className="text-2xl font-bold">Create New RAG Retriever</h1>
-                <p className="text-muted-foreground">
-                    Define a preprocessing and retrieval pipeline by selecting modules and setting their parameters.
-                </p>
-            </div>
+      <div className="space-y-6 p-4 max-w-6xl mx-auto">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">RAG Retrievers</h1>
+            <p className="text-muted-foreground">
+              Manage your retrieval pipelines for RAG applications.
+            </p>
+          </div>
+          <Button onClick={handleCreateRetriever}>Create New Retriever</Button>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Retriever Details</CardTitle>
-            <CardDescription>
-                Creating a new retriever. You can also load an existing API retriever as a template.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-                <Label htmlFor="load-retriever">Load Template Retriever</Label>
-                <Select 
-                  value={CREATE_NEW_CONFIG_VALUE} 
-                  onValueChange={async (value) => {
-                    if (value === CREATE_NEW_CONFIG_VALUE) {
-                      resetFormToCreateNew();
-                    } else if (value.startsWith('api_')) {
-                      // Handle API retriever
-                      const apiRetrieverId = value.replace('api_', '');
-                      const apiRetriever = apiRetrievers.find((config: ApiRetrieverEntry) => config.id === apiRetrieverId);
-                      if (apiRetriever) {
-                        await loadApiRetriever(apiRetriever);
-                      }
-                    }
-                  }}
+        {/* Loading and Error States */}
+        {isLoadingRetrievers && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center">
+                <p className="text-muted-foreground">Loading retrievers...</p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {retrieversError && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center space-y-2">
+                <p className="text-red-600 font-medium">Error loading retrievers</p>
+                <p className="text-sm text-red-600">{retrieversError}</p>
+                <Button onClick={fetchRetrievers} variant="outline" size="sm">
+                  Retry
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Retrievers Grid */}
+        {!isLoadingRetrievers && !retrieversError && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {retrievers
+              .slice()
+              .sort((a, b) => new Date(b.indexed_at || '').getTime() - new Date(a.indexed_at || '').getTime())
+              .map((retriever) => (
+                <Card 
+                  key={retriever.id} 
+                  className="hover:border-primary cursor-pointer relative"
                 >
-                    <SelectTrigger id="load-retriever">
-                        <SelectValue placeholder="Select a template or create new" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={CREATE_NEW_CONFIG_VALUE}>-- Create New RAG Retriever --</SelectItem>
-                        
-                        {/* API Retrievers */}
-                        {apiRetrieversLoading && (
-                          <div className="px-2 py-1 text-xs text-muted-foreground">Loading API retrievers...</div>
-                        )}
-                        {apiRetrieversError && (
-                          <div className="px-2 py-1 text-xs text-red-600">Error loading API retrievers: {apiRetrieversError}</div>
-                        )}
-                        {!apiRetrieversLoading && !apiRetrieversError && apiRetrievers.length > 0 && (
-                          <>
-                            <div className="px-2 py-1 text-xs font-medium text-muted-foreground border-b">API Retriever Templates</div>
-                            {apiRetrievers.map((config: ApiRetrieverEntry) => (
-                                <SelectItem key={`api_${config.id}`} value={`api_${config.id}`}>
-                                  {config.name} {config.status !== 'active' && `(${config.status})`}
-                                </SelectItem>
-                            ))}
-                          </>
-                        )}
-                    </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Loading a template will auto-generate a unique name and copy all settings for creating a new retriever.
-                </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="retriever-name">Retriever Name</Label>
-              <Input id="retriever-name" value={currentRetrieverName} onChange={(e) => setCurrentRetrieverName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="retriever-description">Description</Label>
-              <Input id="retriever-description" value={currentRetrieverDescription} onChange={(e) => setCurrentRetrieverDescription(e.target.value)} placeholder="A brief description of this retriever (optional)" />
-            </div>
-
-            {/* Source Selection - As requested */}
-            <div className="space-y-2">
-                <Label htmlFor="source-select-context">Select Source/Library (Required)</Label>
-                <Select value={selectedSourceForContext} onValueChange={setSelectedSourceForContext}>
-                    <SelectTrigger id="source-select-context">
-                        <SelectValue placeholder="Select a library" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {sources.map(source => (
-                            <SelectItem key={source.id} value={source.id}>
-                                {source.type === 'benchmark' ? 'Benchmark: ' : 'Library: '}{source.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-                {selectedSourceForContext && sources.find(s => s.id === selectedSourceForContext)?.description && (
-                    <p className="text-xs text-muted-foreground italic pt-1">{sources.find(s => s.id === selectedSourceForContext)?.description}</p>
-                )}
-            </div>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <CardTitle className="text-lg">{retriever.name}</CardTitle>
+                      <Badge variant={getStatusBadgeVariant(retriever.status)}>
+                        {retriever.status}
+                      </Badge>
+                    </div>
+                    <CardDescription className="text-sm">
+                      {retriever.description || 'No description provided'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Library:</span>
+                        <span className="font-medium">{getLibraryName(retriever.library_id)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Parser:</span>
+                        <span className="font-medium text-xs">{getParserName(retriever.parser_id)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Chunker:</span>
+                        <span className="font-medium text-xs">{getChunkerName(retriever.chunker_id)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Indexer:</span>
+                        <span className="font-medium text-xs">{getIndexerName(retriever.indexer_id)}</span>
+                      </div>
+                      {retriever.total_chunks && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Chunks:</span>
+                          <span className="font-medium">{retriever.total_chunks.toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-between pt-2 text-xs text-muted-foreground">
+                    <span>Top-K: {retriever.top_k}</span>
+                    <span>
+                      {retriever.indexed_at 
+                        ? `Indexed: ${new Date(retriever.indexed_at).toLocaleDateString()}`
+                        : 'Not indexed'
+                      }
+                    </span>
+                  </CardFooter>
+                </Card>
+              ))}
             
-            {renderModuleSelector('parser', selectedParser, handleNewConfigParserSelect, parserParams, handleNewConfigParamChange)}
-            {renderModuleSelector('chunker', selectedChunker, handleNewConfigChunkerSelect, chunkerParams, handleNewConfigParamChange)}
-            {renderModuleSelector('indexer', selectedIndexer, handleNewConfigIndexerSelect, indexerParams, handleNewConfigParamChange)}
+            {/* Add New Card */}
+            <Card 
+              className="border-dashed flex items-center justify-center cursor-pointer hover:border-primary"
+              onClick={handleCreateRetriever}
+            >
+              <CardContent className="text-center p-6">
+                <div className="text-4xl text-muted-foreground mb-2">+</div>
+                <div className="text-muted-foreground">Create New Retriever</div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-            <Button className="w-full mt-6" onClick={handleSaveRetriever} 
-              disabled={!currentRetrieverName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || !selectedSourceForContext || apiParsersLoading || apiChunkersLoading || apiIndexersLoading || isCreatingRetriever}>
-              {isCreatingRetriever ? "Creating Retriever..." : (apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Create New RAG Retriever"}
-            </Button>
-          </CardContent>
-        </Card>
+        {/* Empty State */}
+        {!isLoadingRetrievers && !retrieversError && retrievers.length === 0 && (
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-center space-y-2">
+                <p className="text-muted-foreground">No retrievers found</p>
+                <p className="text-sm text-muted-foreground">Create your first retriever to get started.</p>
+                <Button onClick={handleCreateRetriever} className="mt-4">
+                  Create Retriever
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Create Retriever Dialog */}
+        <Dialog open={isCreatingRetriever} onOpenChange={setIsCreatingRetriever}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create New Retriever</DialogTitle>
+              <DialogDescription>
+                Configure a new retrieval pipeline by selecting modules and setting parameters.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-6 py-4">
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="retriever-name">Retriever Name</Label>
+                  <Input 
+                    id="retriever-name" 
+                    value={currentRetrieverName} 
+                    onChange={(e) => setCurrentRetrieverName(e.target.value)} 
+                    placeholder="e.g., My Custom Retriever" 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="retriever-description">Description (Optional)</Label>
+                  <Input 
+                    id="retriever-description" 
+                    value={currentRetrieverDescription} 
+                    onChange={(e) => setCurrentRetrieverDescription(e.target.value)} 
+                    placeholder="A brief description of this retriever" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="source-select">Select Library (Required)</Label>
+                  <Select value={selectedSourceForContext} onValueChange={setSelectedSourceForContext}>
+                    <SelectTrigger id="source-select">
+                      <SelectValue placeholder="Select a library" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sources.map(source => (
+                        <SelectItem key={source.id} value={source.id}>
+                          {source.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Module Selection */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Select Modules</h3>
+                
+                {/* Parser Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="parser-select">Parser</Label>
+                  <Select value={selectedParser} onValueChange={setSelectedParser} disabled={apiParsersLoading}>
+                    <SelectTrigger id="parser-select">
+                      <SelectValue placeholder={apiParsersLoading ? "Loading parsers..." : "Select parser"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apiFetchedParsers.map(parser => (
+                        <SelectItem key={parser.id} value={parser.id}>
+                          {parser.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {apiParsersError && (
+                    <p className="text-sm text-red-600">Error loading parsers: {apiParsersError}</p>
+                  )}
+                </div>
+
+                {/* Chunker Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="chunker-select">Chunker</Label>
+                  <Select value={selectedChunker} onValueChange={setSelectedChunker} disabled={apiChunkersLoading}>
+                    <SelectTrigger id="chunker-select">
+                      <SelectValue placeholder={apiChunkersLoading ? "Loading chunkers..." : "Select chunker"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apiFetchedChunkers.map(chunker => (
+                        <SelectItem key={chunker.id} value={chunker.id}>
+                          {chunker.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {apiChunkersError && (
+                    <p className="text-sm text-red-600">Error loading chunkers: {apiChunkersError}</p>
+                  )}
+                </div>
+
+                {/* Indexer Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="indexer-select">Indexer</Label>
+                  <Select value={selectedIndexer} onValueChange={setSelectedIndexer} disabled={apiIndexersLoading}>
+                    <SelectTrigger id="indexer-select">
+                      <SelectValue placeholder={apiIndexersLoading ? "Loading indexers..." : "Select indexer"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apiFetchedIndexers.map(indexer => (
+                        <SelectItem key={indexer.id} value={indexer.id}>
+                          {indexer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {apiIndexersError && (
+                    <p className="text-sm text-red-600">Error loading indexers: {apiIndexersError}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCreatingRetriever(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSaveRetriever} 
+                disabled={!currentRetrieverName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || !selectedSourceForContext || isSubmitting}
+              >
+                {isSubmitting ? "Creating..." : "Create Retriever"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PageLayout>
   );
