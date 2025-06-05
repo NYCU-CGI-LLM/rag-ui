@@ -761,17 +761,6 @@ export default function RetrieverPage() {
                   </CardFooter>
                 </Card>
               ))}
-            
-            {/* Add New Card */}
-            <Card 
-              className="border-dashed flex items-center justify-center cursor-pointer hover:border-primary"
-              onClick={handleCreateRetriever}
-            >
-              <CardContent className="text-center p-6">
-                <div className="text-4xl text-muted-foreground mb-2">+</div>
-                <div className="text-muted-foreground">Create New Retriever</div>
-              </CardContent>
-            </Card>
           </div>
         )}
 

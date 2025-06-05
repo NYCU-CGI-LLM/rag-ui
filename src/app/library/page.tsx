@@ -690,17 +690,6 @@ export default function LibraryPage() {
                   </CardFooter>
                 </Card>
               ))}
-              
-              <Card 
-                key="add-new"
-                className="border-dashed flex items-center justify-center cursor-pointer"
-                onClick={handleCreateLibrary}
-              >
-                <CardContent className="text-center p-6">
-                  <div className="text-4xl text-muted-foreground mb-2">+</div>
-                  <div className="text-muted-foreground">Add New Library</div>
-                </CardContent>
-              </Card>
             </div>
           </>
         )}
