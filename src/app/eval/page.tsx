@@ -143,8 +143,8 @@ interface SelectedModuleConfig {
   parameterValues: { [paramId: string]: string | number | boolean };
 }
 
-// Renamed RAGSystem to RAGConfig, now focused on preprocessing and retrieval only
-interface RAGConfig {
+// Renamed RAGSystem to RAGRetriever, now focused on retrieval only
+interface RAGRetriever {
   id: string;
   name: string;
   description: string;
@@ -631,13 +631,13 @@ const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[]
 };
 
 function EvaluationInterface({
-  ragConfigs,
+  ragRetrievers,
   sources,
 }: {
-  ragConfigs: RAGConfig[];
+  ragRetrievers: RAGRetriever[];
   sources: Source[];
 }) {
-  const [selectedRAGConfigId, setSelectedRAGConfigId] = useState<string>("");
+  const [selectedRAGRetrieverId, setSelectedRAGRetrieverId] = useState<string>("");
   const [selectedSource, setSelectedSource] = useState<string>("");
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
   const [displayableMetrics, setDisplayableMetrics] = useState<Metric[]>([]);
@@ -664,7 +664,7 @@ function EvaluationInterface({
   const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
   const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
 
-  const currentRAGConfig = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
+  const currentRAGRetriever = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
 
   useEffect(() => {
@@ -677,7 +677,7 @@ function EvaluationInterface({
       setSelectedGenerator("");
       setGeneratorParams({});
     }
-  }, [selectedSource, selectedRAGConfigId, sources, ragConfigs]);
+  }, [selectedSource, selectedRAGRetrieverId, sources, ragRetrievers]);
 
   const handleMetricSelection = (metricId: string) => {
     setSelectedMetrics(prev => 
@@ -688,7 +688,7 @@ function EvaluationInterface({
   };
 
   const startEvaluation = async () => {
-    if (!selectedRAGConfigId || !selectedSource || !currentRAGConfig || selectedMetrics.length === 0) return;
+    if (!selectedRAGRetrieverId || !selectedSource || !currentRAGRetriever || selectedMetrics.length === 0) return;
     
     // Check if generator is required and selected
     if (isGeneratorRequired() && !selectedGenerator) return;
@@ -697,7 +697,7 @@ function EvaluationInterface({
 
     try {
       const newResult: EvaluationResults = {
-        systemId: selectedRAGConfigId,
+        systemId: selectedRAGRetrieverId,
         sourceId: selectedSource,
         startTime: new Date(),
         metrics: [],
@@ -710,7 +710,7 @@ function EvaluationInterface({
       setResults((prev) =>
         prev.map((result) => {
           if (
-            result.systemId === selectedRAGConfigId &&
+            result.systemId === selectedRAGRetrieverId &&
             result.sourceId === selectedSource &&
             result.status === "running"
           ) {
@@ -737,7 +737,7 @@ function EvaluationInterface({
       setResults((prev) =>
         prev.map((result) => {
           if (
-            result.systemId === selectedRAGConfigId &&
+            result.systemId === selectedRAGRetrieverId &&
             result.sourceId === selectedSource &&
             result.status === "running"
           ) {
@@ -755,8 +755,8 @@ function EvaluationInterface({
     }
   };
 
-  const getRAGConfigName = (id: string) => {
-    return ragConfigs.find((config) => config.id === id)?.name || id;
+  const getRAGRetrieverName = (id: string) => {
+    return ragRetrievers.find((config: RAGRetriever) => config.id === id)?.name || id;
   };
 
   const getSourceName = (id: string) => {
@@ -802,11 +802,11 @@ function EvaluationInterface({
     if (!sourceDetails.supported_metrics || sourceDetails.supported_metrics.length === 0) {
       if (sourceDetails.type === 'library') {
         let metricsToConsider = DEFAULT_LIBRARY_METRICS_OBJECTS;
-        if (selectedRAGConfigId) {
-          const ragConfigDetails = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
-          if (ragConfigDetails && ragConfigDetails.availableMetrics) {
-            const ragMetricIds = new Set(ragConfigDetails.availableMetrics.map(m => m.id));
-            metricsToConsider = metricsToConsider.filter(m => ragMetricIds.has(m.id));
+        if (selectedRAGRetrieverId) {
+          const ragRetrieverDetails = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
+          if (ragRetrieverDetails && ragRetrieverDetails.availableMetrics) {
+            const ragMetricIds = new Set(ragRetrieverDetails.availableMetrics.map((m: Metric) => m.id));
+            metricsToConsider = metricsToConsider.filter((m: Metric) => ragMetricIds.has(m.id));
           } else {
             metricsToConsider = [];
           }
@@ -819,11 +819,11 @@ function EvaluationInterface({
 
     let metricsFromSource: Metric[] = sourceDetails.supported_metrics;
 
-    if (selectedRAGConfigId) {
-      const ragConfigDetails = ragConfigs.find(rc => rc.id === selectedRAGConfigId);
-      if (ragConfigDetails && ragConfigDetails.availableMetrics) {
-        const ragMetricIds = new Set(ragConfigDetails.availableMetrics.map(m => m.id));
-        metricsFromSource = metricsFromSource.filter(m => ragMetricIds.has(m.id));
+    if (selectedRAGRetrieverId) {
+      const ragRetrieverDetails = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
+      if (ragRetrieverDetails && ragRetrieverDetails.availableMetrics) {
+        const ragMetricIds = new Set(ragRetrieverDetails.availableMetrics.map((m: Metric) => m.id));
+        metricsFromSource = metricsFromSource.filter((m: Metric) => ragMetricIds.has(m.id));
       } else {
         metricsFromSource = [];
       }
@@ -1080,7 +1080,7 @@ function EvaluationInterface({
           <Card>
             <CardHeader>
                 <CardTitle>Run Evaluation</CardTitle>
-                <CardDescription>Select a preprocessing & retrieval configuration, generator, and data source to start an evaluation run.</CardDescription>
+                <CardDescription>Select a retriever, generator, and data source to start an evaluation run.</CardDescription>
             </CardHeader>
             <CardContent className="pt-6">
               <div className="space-y-6">
@@ -1105,18 +1105,18 @@ function EvaluationInterface({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="rag-config-eval">Preprocessing & Retrieval Config</Label>
+                    <Label htmlFor="rag-retriever-eval">Retriever</Label>
                     <Select
-                      value={selectedRAGConfigId} 
+                      value={selectedRAGRetrieverId} 
                       onValueChange={(value) => {
-                        setSelectedRAGConfigId(value);
+                        setSelectedRAGRetrieverId(value);
                       }}
                     >
-                      <SelectTrigger id="rag-config-eval"> 
-                        <SelectValue placeholder="Select preprocessing & retrieval config" /> 
+                      <SelectTrigger id="rag-retriever-eval"> 
+                        <SelectValue placeholder="Select retriever" /> 
                       </SelectTrigger>
                       <SelectContent position="popper">
-                        {ragConfigs.map((config) => ( 
+                        {ragRetrievers.map((config: RAGRetriever) => ( 
                           <SelectItem key={config.id} value={config.id}>
                             {config.name}
                           </SelectItem>
@@ -1174,7 +1174,7 @@ function EvaluationInterface({
                   </div>
                 )}
 
-                {currentRAGConfig && currentSourceDetails && (isGeneratorRequired() ? selectedGenerator : true) && ( 
+                {currentRAGRetriever && currentSourceDetails && (isGeneratorRequired() ? selectedGenerator : true) && ( 
                   <Card className="bg-muted/50">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg">Evaluation Setup Details</CardTitle>
@@ -1191,12 +1191,12 @@ function EvaluationInterface({
                             )}
                         </div>
                         <div className="pt-2 border-t">
-                             <p className="mt-2"><span className="font-semibold">Preprocessing & Retrieval Config:</span> {currentRAGConfig.name}</p> 
-                            <p className="text-xs text-muted-foreground">{currentRAGConfig.description}</p>
+                             <p className="mt-2"><span className="font-semibold">Retriever:</span> {currentRAGRetriever.name}</p> 
+                            <p className="text-xs text-muted-foreground">{currentRAGRetriever.description}</p>
                             <div className="mt-2 space-y-1">
-                                <p className="text-xs"><span className="font-semibold">Parser:</span> {apiFetchedParsers.find(m => m.id === currentRAGConfig.parser.moduleId)?.name || 'N/A (API Error or not found)'}</p>
-                                <p className="text-xs"><span className="font-semibold">Chunker:</span> {apiFetchedChunkers.find(m => m.id === currentRAGConfig.chunker.moduleId)?.name || 'N/A (API Error or not found)'}</p>
-                                <p className="text-xs"><span className="font-semibold">Indexer:</span> {apiFetchedIndexers.find(m => m.id === currentRAGConfig.indexer.moduleId)?.name || 'N/A (API Error or not found)'}</p>
+                                <p className="text-xs"><span className="font-semibold">Parser:</span> {apiFetchedParsers.find(m => m.id === currentRAGRetriever.parser.moduleId)?.name || 'N/A (API Error or not found)'}</p>
+                                <p className="text-xs"><span className="font-semibold">Chunker:</span> {apiFetchedChunkers.find(m => m.id === currentRAGRetriever.chunker.moduleId)?.name || 'N/A (API Error or not found)'}</p>
+                                <p className="text-xs"><span className="font-semibold">Indexer:</span> {apiFetchedIndexers.find(m => m.id === currentRAGRetriever.indexer.moduleId)?.name || 'N/A (API Error or not found)'}</p>
                             </div>
                         </div>
                         {isGeneratorRequired() && selectedGenerator && (
@@ -1215,14 +1215,14 @@ function EvaluationInterface({
                   </Card>
                 )}
 
-                {currentSourceDetails && currentRAGConfig && (isGeneratorRequired() ? selectedGenerator : true) && ( 
+                {currentSourceDetails && currentRAGRetriever && (isGeneratorRequired() ? selectedGenerator : true) && ( 
                   <div className="space-y-3 pt-3">
                     <Label className="text-base font-medium">Select Metrics to Evaluate</Label>
                     <p className="text-xs text-muted-foreground">
-                      {selectedSource && !selectedRAGConfigId && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
-                       selectedSource && selectedRAGConfigId && currentSourceDetails && currentRAGConfig ? `Common metrics for ${currentSourceDetails.name} and ${currentRAGConfig.name}:` : 
-                       !selectedSource && selectedRAGConfigId && currentRAGConfig ? `Metrics available in ${currentRAGConfig.name}:` : 
-                       `Select a Source${isGeneratorRequired() ? ', Preprocessing & Retrieval Config, and Generator' : ' and Preprocessing & Retrieval Config'} to see available metrics.`}
+                      {selectedSource && !selectedRAGRetrieverId && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
+                       selectedSource && selectedRAGRetrieverId && currentSourceDetails && currentRAGRetriever ? `Common metrics for ${currentSourceDetails.name} and ${currentRAGRetriever.name}:` : 
+                       !selectedSource && selectedRAGRetrieverId && currentRAGRetriever ? `Metrics available in ${currentRAGRetriever.name}:` : 
+                       `Select a Source${isGeneratorRequired() ? ', Retriever, and Generator' : ' and Retriever'} to see available metrics.`}
                     </p>
                     {displayableMetrics.length > 0 ? (
                       ['Retrieval', 'Retrieval Token', 'Generation'].map(category => {
@@ -1259,7 +1259,7 @@ function EvaluationInterface({
                                       setSelectedMetrics(prev => [...new Set([...prev, ...categoryMetricIds])]);
                                     }
                                   }}
-                                  disabled={!selectedSource || !selectedRAGConfigId} 
+                                  disabled={!selectedSource || !selectedRAGRetrieverId} 
                                 />
                                 <Label htmlFor={`select-all-${category.toLowerCase().replace(' ', '-')}`} className="text-sm font-normal cursor-pointer">
                                   Select All
@@ -1273,7 +1273,7 @@ function EvaluationInterface({
                                     id={`metric-${metric.id}`}
                                     checked={selectedMetrics.includes(metric.id)}
                                     onCheckedChange={() => handleMetricSelection(metric.id)}
-                                    disabled={!selectedSource || !selectedRAGConfigId} 
+                                    disabled={!selectedSource || !selectedRAGRetrieverId} 
                                   />
                                   <Label htmlFor={`metric-${metric.id}`} className="text-sm font-normal cursor-pointer">
                                     {metric.name}
@@ -1286,7 +1286,7 @@ function EvaluationInterface({
                       })
                     ) : (
                         <p className="text-sm text-muted-foreground pt-2">
-                          {selectedSource && selectedRAGConfigId ? "No common metrics found for the selected Source and RAG Configuration." : "No metrics available for the current selection."}
+                          {selectedSource && selectedRAGRetrieverId ? "No common metrics found for the selected Source and Retriever." : "No metrics available for the current selection."}
                         </p>
                     )}
                   </div>
@@ -1295,7 +1295,7 @@ function EvaluationInterface({
                 <Button
                   className="w-full pt-2"
                   onClick={startEvaluation}
-                  disabled={!selectedRAGConfigId || !selectedSource || (isGeneratorRequired() && !selectedGenerator) || selectedMetrics.length === 0 || isEvaluating} 
+                  disabled={!selectedRAGRetrieverId || !selectedSource || (isGeneratorRequired() && !selectedGenerator) || selectedMetrics.length === 0 || isEvaluating} 
                 >
                   {isEvaluating ? "Evaluating..." : "Start Evaluation & View Results"}
                 </Button>
@@ -1314,7 +1314,7 @@ function EvaluationInterface({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Preprocessing & Retrieval Config</TableHead> 
+                    <TableHead>Retriever</TableHead> 
                     <TableHead>Source</TableHead>
                     <TableHead>Start Time</TableHead>
                     <TableHead>End Time</TableHead>
@@ -1325,7 +1325,7 @@ function EvaluationInterface({
                 <TableBody>
                   {results.map((result, index) => (
                     <TableRow key={index}>
-                      <TableCell>{getRAGConfigName(result.systemId)}</TableCell> 
+                      <TableCell>{getRAGRetrieverName(result.systemId)}</TableCell> 
                       <TableCell>{getSourceName(result.sourceId)}</TableCell>
                       <TableCell>
                         {result.startTime.toLocaleString()}
@@ -1383,12 +1383,12 @@ function EvaluationInterface({
 }
 
 export default function EvalPage() {
-  const [ragConfigs, setRagConfigs] = useState<RAGConfig[]>([]);
+  const [ragRetrievers, setRagRetrievers] = useState<RAGRetriever[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [isLoadingSources, setIsLoadingSources] = useState(true);
-  const [isLoadingConfigs, setIsLoadingConfigs] = useState(true);
+  const [isLoadingRetrievers, setIsLoadingRetrievers] = useState(true);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
-  const [configsError, setConfigsError] = useState<string | null>(null);
+  const [retrieversError, setRetrieversError] = useState<string | null>(null);
   const router = useRouter();
 
   // Fetch libraries from API as sources
@@ -1458,20 +1458,20 @@ export default function EvalPage() {
     fetchSources();
   }, []);
 
-  // Fetch retriever configs from API as RAG configs
+  // Fetch retriever configs from API as RAG retrievers
   useEffect(() => {
-    const fetchRAGConfigs = async () => {
+    const fetchRAGRetrievers = async () => {
       try {
-        setIsLoadingConfigs(true);
-        setConfigsError(null);
+        setIsLoadingRetrievers(true);
+        setRetrieversError(null);
         if (!API_URL) throw new Error('API_URL not configured');
         
         const response = await fetch(`${API_URL}/retriever/`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data: ApiRetrieverListResponse = await response.json();
         
-        // Transform API retriever data to RAGConfig format
-        const configsFromAPI: RAGConfig[] = data.retrievers.map((retriever: ApiRetrieverEntry) => ({
+        // Transform API retriever data to RAGRetriever format
+        const retrieversFromAPI: RAGRetriever[] = data.retrievers.map((retriever: ApiRetrieverEntry) => ({
           id: retriever.id,
           name: retriever.name,
           description: retriever.description || '',
@@ -1498,17 +1498,17 @@ export default function EvalPage() {
           ],
         }));
         
-        setRagConfigs(configsFromAPI);
+        setRagRetrievers(retrieversFromAPI);
       } catch (error) {
         console.error('Failed to fetch retriever configs:', error);
-        setConfigsError(error instanceof Error ? error.message : 'Failed to fetch retriever configs');
-        setRagConfigs([]);
+        setRetrieversError(error instanceof Error ? error.message : 'Failed to fetch retriever configs');
+        setRagRetrievers([]);
       } finally {
-        setIsLoadingConfigs(false);
+        setIsLoadingRetrievers(false);
       }
     };
     
-    fetchRAGConfigs();
+    fetchRAGRetrievers();
   }, []);
 
   return (
@@ -1522,47 +1522,47 @@ export default function EvalPage() {
         </div>
 
         {/* Loading and Error States */}
-        {(isLoadingSources || isLoadingConfigs) && (
+        {(isLoadingSources || isLoadingRetrievers) && (
           <Card>
             <CardContent className="p-6">
               <div className="text-center">
                 <p className="text-muted-foreground">Loading data from API...</p>
                 {isLoadingSources && <p className="text-sm text-muted-foreground">• Loading libraries...</p>}
-                {isLoadingConfigs && <p className="text-sm text-muted-foreground">• Loading retriever configurations...</p>}
+                {isLoadingRetrievers && <p className="text-sm text-muted-foreground">• Loading retrievers...</p>}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {(sourcesError || configsError) && (
+        {(sourcesError || retrieversError) && (
           <Card>
             <CardContent className="p-6">
               <div className="text-center space-y-2">
                 <p className="text-red-600 font-medium">Error loading data from API</p>
                 {sourcesError && <p className="text-sm text-red-600">Sources: {sourcesError}</p>}
-                {configsError && <p className="text-sm text-red-600">Configurations: {configsError}</p>}
+                {retrieversError && <p className="text-sm text-red-600">Retrievers: {retrieversError}</p>}
                 <p className="text-sm text-muted-foreground">Please check your API connection and try again.</p>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {!isLoadingSources && !isLoadingConfigs && !sourcesError && !configsError && sources.length === 0 && ragConfigs.length === 0 && (
+        {!isLoadingSources && !isLoadingRetrievers && !sourcesError && !retrieversError && sources.length === 0 && ragRetrievers.length === 0 && (
           <Card>
             <CardContent className="p-6">
               <div className="text-center space-y-2">
                 <p className="text-muted-foreground">No data available</p>
-                <p className="text-sm text-muted-foreground">No libraries or retriever configurations found. Create some configurations first.</p>
+                <p className="text-sm text-muted-foreground">No libraries or retrievers found. Create some retrievers first.</p>
                 <Button onClick={() => router.push('/configure')} className="mt-4">
-                  Create Configuration
+                  Create Retriever
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {!isLoadingSources && !isLoadingConfigs && (sources.length > 0 || ragConfigs.length > 0) && (
-          <EvaluationInterface ragConfigs={ragConfigs} sources={sources} />
+        {!isLoadingSources && !isLoadingRetrievers && (sources.length > 0 || ragRetrievers.length > 0) && (
+          <EvaluationInterface ragRetrievers={ragRetrievers} sources={sources} />
         )}
       </div>
     </PageLayout>

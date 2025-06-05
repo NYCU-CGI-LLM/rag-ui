@@ -190,7 +190,7 @@ interface Metric {
     category: 'Retrieval' | 'Retrieval Token' | 'Generation';
 }
   
-interface RAGConfig {
+interface RAGRetriever {
   id: string;
   name: string;
   description: string;
@@ -198,7 +198,7 @@ interface RAGConfig {
   chunker: SelectedModuleConfig;
   indexer: SelectedModuleConfig;
   availableMetrics: Metric[]; 
-  // Consider adding selectedSourceId here if it becomes part of the config itself
+  // Consider adding selectedSourceId here if it becomes part of the retriever itself
   // selectedSourceId?: string;
 }
 
@@ -211,7 +211,7 @@ interface Source {
 }
 
 // ALL_METRICS and GENERATOR_MODULES might be needed if defaults are set from them
-// For simplicity, RAGConfig.availableMetrics is set to ALL_METRICS for now on save.
+// For simplicity, RAGRetriever.availableMetrics is set to ALL_METRICS for now on save.
 const ALL_METRICS: { [key: string]: Metric } = {
     recall: { id: "recall", name: "Recall", category: "Retrieval" as const },
     precision: { id: "precision", name: "Precision", category: "Retrieval" as const },
@@ -423,13 +423,13 @@ export default function ConfigureRAGPage() {
 
   const [sources, setSources] = useState<Source[]>([]);
   
-  // API retriever configs state
-  const [apiRetrieverConfigs, setApiRetrieverConfigs] = useState<ApiRetrieverEntry[]>([]);
-  const [apiRetrieverConfigsLoading, setApiRetrieverConfigsLoading] = useState(true);
-  const [apiRetrieverConfigsError, setApiRetrieverConfigsError] = useState<string | null>(null);
+  // API retriever state
+  const [apiRetrievers, setApiRetrievers] = useState<ApiRetrieverEntry[]>([]);
+  const [apiRetrieversLoading, setApiRetrieversLoading] = useState(true);
+  const [apiRetrieversError, setApiRetrieversError] = useState<string | null>(null);
   
-  const [currentConfigName, setCurrentConfigName] = useState<string>("");
-  const [currentConfigDescription, setCurrentConfigDescription] = useState<string>("");
+  const [currentRetrieverName, setCurrentRetrieverName] = useState<string>("");
+  const [currentRetrieverDescription, setCurrentRetrieverDescription] = useState<string>("");
   const [selectedParser, setSelectedParser] = useState<string>("");
   const [selectedChunker, setSelectedChunker] = useState<string>("");
   const [selectedIndexer, setSelectedIndexer] = useState<string>("");
@@ -457,8 +457,8 @@ export default function ConfigureRAGPage() {
 
   // Function to reset form to a "create new" state
   const resetFormToCreateNew = () => {
-    setCurrentConfigName("");
-    setCurrentConfigDescription("");
+    setCurrentRetrieverName("");
+    setCurrentRetrieverDescription("");
     setSelectedParser("");
     setParserParams({});
     setSelectedChunker("");
@@ -500,16 +500,16 @@ export default function ConfigureRAGPage() {
     const editId = searchParams.get('edit');
 
     if (editId && selectedParser !== "") {
-        const configToLoad = apiRetrieverConfigs.find(rc => rc.id === editId);
-        if (configToLoad) {
-            setCurrentConfigName(configToLoad.name); // Load actual name for editing
-            setCurrentConfigDescription(configToLoad.description || "");
-            setSelectedParser(configToLoad.parser_id);
-            setParserParams({...configToLoad});
-            setSelectedChunker(configToLoad.chunker_id);
-            setChunkerParams({...configToLoad});
-            setSelectedIndexer(configToLoad.indexer_id);
-            setIndexerParams({...configToLoad});
+        const retrieverToLoad = apiRetrievers.find((rc: ApiRetrieverEntry) => rc.id === editId);
+        if (retrieverToLoad) {
+            setCurrentRetrieverName(retrieverToLoad.name); // Load actual name for editing
+            setCurrentRetrieverDescription(retrieverToLoad.description || "");
+            setSelectedParser(retrieverToLoad.parser_id);
+            setParserParams({...retrieverToLoad});
+            setSelectedChunker(retrieverToLoad.chunker_id);
+            setChunkerParams({...retrieverToLoad});
+            setSelectedIndexer(retrieverToLoad.indexer_id);
+            setIndexerParams({...retrieverToLoad});
         } else {
             // editId in URL is invalid, reset to create new
             resetFormToCreateNew();
@@ -517,8 +517,8 @@ export default function ConfigureRAGPage() {
     } else if (!editId && selectedParser !== "") {
         resetFormToCreateNew();
     } else if (!editId && selectedParser === "") {
-        setCurrentConfigName("");
-        setCurrentConfigDescription("");
+        setCurrentRetrieverName("");
+        setCurrentRetrieverDescription("");
         setSelectedParser("");
         setParserParams({});
         setSelectedChunker("");
@@ -595,26 +595,26 @@ export default function ConfigureRAGPage() {
     fetchIndexers();
   }, []);
 
-  // Fetch API retriever configs
+  // Fetch API retrievers
   useEffect(() => {
-    const fetchApiRetrieverConfigs = async () => {
+    const fetchApiRetrievers = async () => {
       try {
-        setApiRetrieverConfigsLoading(true);
-        setApiRetrieverConfigsError(null);
+        setApiRetrieversLoading(true);
+        setApiRetrieversError(null);
         if (!API_URL) throw new Error('API_URL not configured');
         const response = await fetch(`${API_URL}/retriever/`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data: ApiRetrieverListResponse = await response.json();
-        setApiRetrieverConfigs(data.retrievers);
+        setApiRetrievers(data.retrievers);
       } catch (error) {
-        console.error('Failed to fetch API retriever configs:', error);
-        setApiRetrieverConfigsError(error instanceof Error ? error.message : 'Failed to fetch API retriever configs');
-        setApiRetrieverConfigs([]);
+        console.error('Failed to fetch API retrievers:', error);
+        setApiRetrieversError(error instanceof Error ? error.message : 'Failed to fetch API retrievers');
+        setApiRetrievers([]);
       } finally {
-        setApiRetrieverConfigsLoading(false);
+        setApiRetrieversLoading(false);
       }
     };
-    fetchApiRetrieverConfigs();
+    fetchApiRetrievers();
   }, []);
 
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
@@ -644,14 +644,14 @@ export default function ConfigureRAGPage() {
     }
   };
 
-  // Function to load API retriever config into form
-  const loadApiRetrieverConfig = async (retrieverConfig: ApiRetrieverEntry) => {
-    // Create a unique name for the new config based on the template
+  // Function to load API retriever into form
+  const loadApiRetriever = async (retrieverConfig: ApiRetrieverEntry) => {
+    // Create a unique name for the new retriever based on the template
     const timestamp = new Date().toISOString().slice(11, 19).replace(/:/g, '');
-    const newConfigName = `${retrieverConfig.name}_copy_${timestamp}`;
+    const newRetrieverName = `${retrieverConfig.name}_copy_${timestamp}`;
     
-    setCurrentConfigName(newConfigName);
-    setCurrentConfigDescription(retrieverConfig.description || "");
+    setCurrentRetrieverName(newRetrieverName);
+    setCurrentRetrieverDescription(retrieverConfig.description || "");
     
     // Set the component IDs
     setSelectedParser(retrieverConfig.parser_id);
@@ -733,9 +733,9 @@ export default function ConfigureRAGPage() {
     }
   };
 
-  const handleSaveConfig = async () => {
-    if (!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer) {
-      alert("Please provide a configuration name and select a parser, chunker, and indexer.");
+  const handleSaveRetriever = async () => {
+    if (!currentRetrieverName.trim() || !selectedParser || !selectedChunker || !selectedIndexer) {
+      alert("Please provide a retriever name and select a parser, chunker, and indexer.");
       return;
     }
 
@@ -748,15 +748,15 @@ export default function ConfigureRAGPage() {
       setIsCreatingRetriever(true);
 
       const requestBody: CreateRetrieverRequest = {
-        name: currentConfigName.trim(),
-        description: currentConfigDescription.trim() || undefined,
+        name: currentRetrieverName.trim(),
+        description: currentRetrieverDescription.trim() || undefined,
         library_id: selectedSourceForContext,
         parser_id: selectedParser,
         chunker_id: selectedChunker,
         indexer_id: selectedIndexer,
         top_k: 10, // Default value
         params: {}, // Could be extended to include custom params
-        collection_name: `${currentConfigName.trim().replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`
+        collection_name: `${currentRetrieverName.trim().replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`
       };
 
       if (!API_URL) throw new Error('API_URL not configured');
@@ -867,7 +867,7 @@ export default function ConfigureRAGPage() {
       <div className="space-y-6 p-4 max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
             <div>
-                <h1 className="text-2xl font-bold">Create New RAG Configuration</h1>
+                <h1 className="text-2xl font-bold">Create New RAG Retriever</h1>
                 <p className="text-muted-foreground">
                     Define a preprocessing and retrieval pipeline by selecting modules and setting their parameters.
                 </p>
@@ -876,46 +876,46 @@ export default function ConfigureRAGPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Configuration Details</CardTitle>
+            <CardTitle>Retriever Details</CardTitle>
             <CardDescription>
-                Creating a new configuration. You can also load an existing API configuration as a template.
+                Creating a new retriever. You can also load an existing API retriever as a template.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-                <Label htmlFor="load-config">Load Template Configuration</Label>
+                <Label htmlFor="load-retriever">Load Template Retriever</Label>
                 <Select 
                   value={CREATE_NEW_CONFIG_VALUE} 
                   onValueChange={async (value) => {
                     if (value === CREATE_NEW_CONFIG_VALUE) {
                       resetFormToCreateNew();
                     } else if (value.startsWith('api_')) {
-                      // Handle API retriever config
-                      const apiConfigId = value.replace('api_', '');
-                      const apiConfig = apiRetrieverConfigs.find(config => config.id === apiConfigId);
-                      if (apiConfig) {
-                        await loadApiRetrieverConfig(apiConfig);
+                      // Handle API retriever
+                      const apiRetrieverId = value.replace('api_', '');
+                      const apiRetriever = apiRetrievers.find((config: ApiRetrieverEntry) => config.id === apiRetrieverId);
+                      if (apiRetriever) {
+                        await loadApiRetriever(apiRetriever);
                       }
                     }
                   }}
                 >
-                    <SelectTrigger id="load-config">
+                    <SelectTrigger id="load-retriever">
                         <SelectValue placeholder="Select a template or create new" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value={CREATE_NEW_CONFIG_VALUE}>-- Create New Configuration --</SelectItem>
+                        <SelectItem value={CREATE_NEW_CONFIG_VALUE}>-- Create New RAG Retriever --</SelectItem>
                         
-                        {/* API Retriever Configs */}
-                        {apiRetrieverConfigsLoading && (
-                          <div className="px-2 py-1 text-xs text-muted-foreground">Loading API configurations...</div>
+                        {/* API Retrievers */}
+                        {apiRetrieversLoading && (
+                          <div className="px-2 py-1 text-xs text-muted-foreground">Loading API retrievers...</div>
                         )}
-                        {apiRetrieverConfigsError && (
-                          <div className="px-2 py-1 text-xs text-red-600">Error loading API configs: {apiRetrieverConfigsError}</div>
+                        {apiRetrieversError && (
+                          <div className="px-2 py-1 text-xs text-red-600">Error loading API retrievers: {apiRetrieversError}</div>
                         )}
-                        {!apiRetrieverConfigsLoading && !apiRetrieverConfigsError && apiRetrieverConfigs.length > 0 && (
+                        {!apiRetrieversLoading && !apiRetrieversError && apiRetrievers.length > 0 && (
                           <>
                             <div className="px-2 py-1 text-xs font-medium text-muted-foreground border-b">API Retriever Templates</div>
-                            {apiRetrieverConfigs.map(config => (
+                            {apiRetrievers.map((config: ApiRetrieverEntry) => (
                                 <SelectItem key={`api_${config.id}`} value={`api_${config.id}`}>
                                   {config.name} {config.status !== 'active' && `(${config.status})`}
                                 </SelectItem>
@@ -925,17 +925,17 @@ export default function ConfigureRAGPage() {
                     </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Loading a template will auto-generate a unique name and copy all settings for creating a new configuration.
+                  Loading a template will auto-generate a unique name and copy all settings for creating a new retriever.
                 </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="config-name">Configuration Name</Label>
-              <Input id="config-name" value={currentConfigName} onChange={(e) => setCurrentConfigName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
+              <Label htmlFor="retriever-name">Retriever Name</Label>
+              <Input id="retriever-name" value={currentRetrieverName} onChange={(e) => setCurrentRetrieverName(e.target.value)} placeholder="e.g., My Custom Preprocessing & Retrieval" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="config-description">Description</Label>
-              <Input id="config-description" value={currentConfigDescription} onChange={(e) => setCurrentConfigDescription(e.target.value)} placeholder="A brief description of this configuration (optional)" />
+              <Label htmlFor="retriever-description">Description</Label>
+              <Input id="retriever-description" value={currentRetrieverDescription} onChange={(e) => setCurrentRetrieverDescription(e.target.value)} placeholder="A brief description of this retriever (optional)" />
             </div>
 
             {/* Source Selection - As requested */}
@@ -962,9 +962,9 @@ export default function ConfigureRAGPage() {
             {renderModuleSelector('chunker', selectedChunker, handleNewConfigChunkerSelect, chunkerParams, handleNewConfigParamChange)}
             {renderModuleSelector('indexer', selectedIndexer, handleNewConfigIndexerSelect, indexerParams, handleNewConfigParamChange)}
 
-            <Button className="w-full mt-6" onClick={handleSaveConfig} 
-              disabled={!currentConfigName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || !selectedSourceForContext || apiParsersLoading || apiChunkersLoading || apiIndexersLoading || isCreatingRetriever}>
-              {isCreatingRetriever ? "Creating Retriever..." : (apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Create Retriever Configuration"}
+            <Button className="w-full mt-6" onClick={handleSaveRetriever} 
+              disabled={!currentRetrieverName.trim() || !selectedParser || !selectedChunker || !selectedIndexer || !selectedSourceForContext || apiParsersLoading || apiChunkersLoading || apiIndexersLoading || isCreatingRetriever}>
+              {isCreatingRetriever ? "Creating Retriever..." : (apiParsersLoading || apiChunkersLoading || apiIndexersLoading) ? "Loading Modules..." : "Create New RAG Retriever"}
             </Button>
           </CardContent>
         </Card>
