@@ -484,7 +484,11 @@ export default function ChatPage() {
                 id: "initial-ai-message-existing",
                 isUser: false,
                 content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: new Date().toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit',
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                }),
               }]);
             }
           } catch (error) {
@@ -493,7 +497,11 @@ export default function ChatPage() {
               id: "initial-ai-message-error",
               isUser: false,
               content: `Hello! I've loaded the "${session.name}" session, but couldn't fetch previous messages. How can I help you today?`,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date().toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+              }),
             }]);
           }
           
@@ -538,7 +546,11 @@ export default function ChatPage() {
       id: `user-${Date.now()}`,
       isUser: true,
       content: inputValue,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      }),
     };
 
     setMessages((prevMessages) => [...prevMessages, userMessage]);
@@ -580,7 +592,11 @@ export default function ChatPage() {
         id: data.message_id || `ai-${Date.now()}`,
         isUser: false,
         content: aiContent || "Sorry, I couldn't process that.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }),
       };
       setMessages((prevMessages) => [...prevMessages, aiMessage]);
     } catch (error) {
@@ -589,7 +605,11 @@ export default function ChatPage() {
         id: `error-${Date.now()}`,
         isUser: false,
         content: error instanceof Error ? error.message : "An unknown error occurred.",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }),
       };
       setMessages((prevMessages) => [...prevMessages, errorMessage]);
     } finally {
@@ -645,7 +665,11 @@ export default function ChatPage() {
         id: "initial-ai-message-new",
         isUser: false,
         content: "Hello! How can I help you today?",
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }),
       }]);
       
       // Reset temporary form values
@@ -679,7 +703,11 @@ export default function ChatPage() {
           id: "initial-ai-message-empty",
           isUser: false,
           content: "Hello! How can I help you today?",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: new Date().toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+          }),
         }]);
       }
     }
@@ -717,7 +745,11 @@ export default function ChatPage() {
             id: "initial-ai-message-existing",
             isUser: false,
             content: `Hello! I've loaded the "${session.name}" session. How can I help you today?`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: new Date().toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            }),
           }]);
         }
       } catch (error) {
@@ -726,7 +758,11 @@ export default function ChatPage() {
           id: "initial-ai-message-error",
           isUser: false,
           content: `Hello! I've loaded the "${session.name}" session, but couldn't fetch previous messages. How can I help you today?`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: new Date().toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+          }),
         }]);
       }
       
@@ -762,7 +798,8 @@ export default function ChatPage() {
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-        hour12: true
+        hour12: true,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       });
 
       // Create new session object with "copy" suffix, copying all original configs
@@ -787,7 +824,11 @@ export default function ChatPage() {
         id: "initial-ai-message-copy",
         isUser: false,
         content: `Hello! I've created a copy of "${session.name}". How can I help you today?`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date().toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        }),
       }]);
       
       // Close dialog
@@ -798,22 +839,31 @@ export default function ChatPage() {
 
   // Transform API chat data to ChatSession format
   const transformApiChatToSession = (apiChat: ApiChatSummary): ChatSession => {
-    // Format the last activity timestamp
+    // Format the last activity timestamp - ensure proper timezone handling
     const lastActivity = new Date(apiChat.last_activity);
     const now = new Date();
     const diffInHours = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
     
     let timestamp: string;
     if (diffInHours < 24) {
-      timestamp = `Today, ${lastActivity.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      timestamp = `Today, ${lastActivity.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      })}`;
     } else if (diffInHours < 48) {
-      timestamp = `Yesterday, ${lastActivity.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      timestamp = `Yesterday, ${lastActivity.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      })}`;
     } else {
       timestamp = lastActivity.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       });
     }
 
@@ -911,7 +961,8 @@ export default function ChatPage() {
     return sortedMessages.map((apiMsg, index) => {
       const timestamp = new Date(apiMsg.created_at).toLocaleTimeString([], { 
         hour: '2-digit', 
-        minute: '2-digit' 
+        minute: '2-digit',
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       });
       
       return {
@@ -1153,7 +1204,11 @@ export default function ChatPage() {
                   <ChatMessage
                     isUser={false}
                     content="AI Assistant is typing..."
-                    timestamp={new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    timestamp={new Date().toLocaleTimeString([], { 
+                      hour: '2-digit', 
+                      minute: '2-digit',
+                      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                    })}
                   />
                 )}
               </div>
