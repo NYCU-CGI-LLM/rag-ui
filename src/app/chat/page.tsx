@@ -27,24 +27,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
-// Import RAG configuration types and data from eval page
-type ModuleType = 'parser' | 'chunker' | 'retriever' | 'generator';
 
-interface SelectedModuleConfig {
-  moduleId: string;
-  parameterValues: { [paramId: string]: string | number | boolean };
-}
-
-interface RAGConfig {
-  id: string;
-  name: string;
-  description: string;
-  parser: SelectedModuleConfig;
-  chunker: SelectedModuleConfig;
-  retriever: SelectedModuleConfig;
-  // generator removed - managed separately in chat
-  availableMetrics: any[]; // Simplified for chat usage
-}
 
 // Default generator configuration for chat sessions
 interface ChatGeneratorConfig {
@@ -265,114 +248,19 @@ const GENERATOR_PARAM_DEFINITIONS: { [generatorId: string]: ParameterDefinition[
   ]
 };
 
-// Library data with descriptions
-const libraries = [
-  { 
-    id: "none", 
-    name: "No library", 
-    description: "" 
-  },
-  { 
-    id: "tech-docs", 
-    name: "Technical Docs", 
-    description: "Documentation for all technical systems and frameworks used in the organization." 
-  },
-  { 
-    id: "product-manuals", 
-    name: "Product Manuals", 
-    description: "User guides and specifications for all products in our catalog." 
-  },
-  { 
-    id: "research-papers", 
-    name: "Research Papers", 
-    description: "Academic papers and research conducted by our R&D department." 
-  },
-  { 
-    id: "company-wiki", 
-    name: "Company Wiki", 
-    description: "Internal knowledge base covering company policies, procedures and best practices." 
-  },
-];
 
-// Available RAG Configurations (same as in eval page) - now without generator
-const availableRAGConfigs: RAGConfig[] = [
-  {
-    id: "rag1_basic_autorag",
-    name: "Basic AutoRAG",
-    description: "A simple AutoRAG configuration with basic modules.",
-    parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-    chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 1024, chunk_overlap: 24, add_file_name: "en" } },
-    retriever: { moduleId: "bm25", parameterValues: { top_k: 5, bm25_tokenizer: "porter_stemmer" } },
-    // generator removed from RAG config
-    availableMetrics: [],
-  },
-  {
-    id: "rag2_vector_autorag",
-    name: "Vector AutoRAG",
-    description: "AutoRAG configuration using vector database retrieval.",
-    parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-    chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 512, chunk_overlap: 50, add_file_name: "en" } },
-    retriever: { moduleId: "vectordb", parameterValues: { top_k: 3, vectordb: "chroma", embedding_model: "OpenAI Embedding API", embedding_batch: 128, similarity_metric: "cosine" } },
-    // generator removed from RAG config
-    availableMetrics: [],
-  },
-  {
-    id: "rag3_hybrid_autorag",
-    name: "Hybrid AutoRAG",
-    description: "AutoRAG configuration using hybrid retrieval with RRF.",
-    parser: { moduleId: "langchain_parse", parameterValues: { parse_method: "pdfminer" } },
-    chunker: { moduleId: "llama_index_chunk", parameterValues: { chunk_method: "Token", chunk_size: 2048, chunk_overlap: 100, add_file_name: "en" } },
-    retriever: { moduleId: "hybrid_rrf", parameterValues: { top_k: 10, weight: 0.6 } },
-    // generator removed from RAG config
-    availableMetrics: [],
-  },
-];
+
+
 
 // Chat session interface - now includes generator config
 interface ChatSession {
   id: string;
   name: string;
   timestamp: string;
-  library: string;
-  ragConfigId: string;
   generatorConfig: ChatGeneratorConfig; // Add generator config to chat session
 }
 
-// Mock saved chat sessions using RAG configs - now as initial data
-const initialChatSessions: ChatSession[] = [
-  { 
-    id: "session-1", 
-    name: "General Chat",
-    timestamp: "Today, 10:30 AM",
-    library: "tech-docs",
-    ragConfigId: "rag1_basic_autorag",
-    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
-  },
-  { 
-    id: "session-2", 
-    name: "Project Research",
-    timestamp: "Yesterday, 3:45 PM",
-    library: "research-papers",
-    ragConfigId: "rag2_vector_autorag",
-    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o", max_tokens: 512, temperature: 0.5, top_p: 0.9 } },
-  },
-  { 
-    id: "session-3", 
-    name: "Meeting Notes",
-    timestamp: "Aug 15, 2:15 PM",
-    library: "company-wiki",
-    ragConfigId: "rag3_hybrid_autorag",
-    generatorConfig: { moduleId: "vllm", parameterValues: { llm: "meta-llama/Llama-2-7b-chat-hf", max_tokens: 1024, temperature: 0.8 } },
-  },
-  { 
-    id: "session-4", 
-    name: "Technical Docs",
-    timestamp: "Aug 14, 11:20 AM",
-    library: "product-manuals",
-    ragConfigId: "rag1_basic_autorag",
-    generatorConfig: { moduleId: "openai_llm", parameterValues: { llm: "gpt-4o-mini", max_tokens: 4096, temperature: 0.7, top_p: 1.0 } },
-  },
-];
+
 
 // Chat message component for better structure
 interface Message {
@@ -514,8 +402,6 @@ interface ApiRetrieverListResponse {
 }
 
 export default function ChatPage() {
-  const [selectedLibrary, setSelectedLibrary] = useState(libraries[0].id);
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -537,9 +423,8 @@ export default function ChatPage() {
   // Add state for top_k retrieval parameter (separate from generator params)
   const [retrievalTopK, setRetrievalTopK] = useState<number>(5);
   
-  // Track the currently selected chat session and RAG config
+  // Track the currently selected chat session
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const [selectedRAGConfigId, setSelectedRAGConfigId] = useState<string>(availableRAGConfigs[0]?.id || "");
 
   // Generator parameter overrides for current session
   const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({});
@@ -585,10 +470,6 @@ export default function ChatPage() {
     if (!isLoadingChats && chatSessions.length > 0 && selectedSessionId) {
       const session = chatSessions.find(s => s.id === selectedSessionId);
       if (session) {
-        // Set configuration based on the selected session
-        setSelectedLibrary(session.library);
-        setSelectedRAGConfigId(session.ragConfigId);
-        
         // Fetch actual messages from API
         const loadInitialMessages = async () => {
           try {
@@ -634,12 +515,7 @@ export default function ChatPage() {
       }
     }
   }, [isLoadingChats, chatSessions, selectedSessionId]);
-  
-  // Get the full description of the selected library
-  const selectedLibraryData = libraries.find(lib => lib.id === selectedLibrary);
 
-  // Get current RAG config details
-  const currentRAGConfig = availableRAGConfigs.find(c => c.id === selectedRAGConfigId);
 
   // Handle generator parameter changes
   const handleGeneratorParamChange = (paramId: string, value: string | number | boolean) => {
@@ -799,8 +675,6 @@ export default function ChatPage() {
       } else {
         // No sessions left, create a default state
         setSelectedSessionId("");
-        setSelectedLibrary(libraries[0].id);
-        setSelectedRAGConfigId(availableRAGConfigs[0]?.id || "");
         setMessages([{
           id: "initial-ai-message-empty",
           isUser: false,
@@ -827,9 +701,7 @@ export default function ChatPage() {
     const session = chatSessions.find(s => s.id === sessionId);
     
     if (session) {
-      // Set configuration based on the selected session
-      setSelectedLibrary(session.library);
-      setSelectedRAGConfigId(session.ragConfigId);
+      // Set selected session
       setSelectedSessionId(sessionId);
       
       // Fetch actual messages from API
@@ -898,8 +770,6 @@ export default function ChatPage() {
         id: newSessionId,
         name: `${session.name} copy`,
         timestamp: timestamp,
-        library: session.library,
-        ragConfigId: session.ragConfigId,
         generatorConfig: { 
           moduleId: session.generatorConfig.moduleId, 
           parameterValues: { ...session.generatorConfig.parameterValues } 
@@ -909,9 +779,7 @@ export default function ChatPage() {
       // Add to sessions list
       setChatSessions(prev => [newSession, ...prev]);
 
-      // Set configuration based on the copied session
-      setSelectedLibrary(session.library);
-      setSelectedRAGConfigId(session.ragConfigId);
+      // Set selected session
       setSelectedSessionId(newSessionId);
       
       // Reset chat messages to initial greeting
@@ -949,17 +817,10 @@ export default function ChatPage() {
       });
     }
 
-    // Try to find matching RAG config by name
-    const ragConfig = availableRAGConfigs.find(config => 
-      config.name === apiChat.retriever_config_name
-    );
-
     return {
       id: apiChat.id,
       name: apiChat.name || "Untitled Chat",
       timestamp: timestamp,
-      library: "tech-docs", // Default library since API doesn't provide this
-      ragConfigId: ragConfig?.id || availableRAGConfigs[0]?.id || "",
       generatorConfig: {
         moduleId: "openai_llm",
         parameterValues: {
@@ -998,8 +859,6 @@ export default function ChatPage() {
       if (transformedSessions.length > 0 && !selectedSessionId) {
         const firstSession = transformedSessions[0];
         setSelectedSessionId(firstSession.id);
-        setSelectedLibrary(firstSession.library);
-        setSelectedRAGConfigId(firstSession.ragConfigId);
       }
     } catch (error) {
       console.error('Failed to fetch chat sessions:', error);
@@ -1007,8 +866,6 @@ export default function ChatPage() {
       
       setChatSessions([]);
       setSelectedSessionId("");
-      setSelectedLibrary(libraries[0].id);
-      setSelectedRAGConfigId(availableRAGConfigs[0]?.id || "");
     } finally {
       setIsLoadingChats(false);
     }
@@ -1628,10 +1485,7 @@ export default function ChatPage() {
                       </div>
                       <div className="flex flex-wrap gap-2 mt-2">
                         <Badge variant="outline" className="text-xs">
-                          {libraries.find(l => l.id === session.library)?.name || session.library}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {availableRAGConfigs.find(c => c.id === session.ragConfigId)?.name || session.ragConfigId}
+                          {session.generatorConfig.parameterValues.llm || "OpenAI GPT"}
                         </Badge>
                       </div>
                     </div>
