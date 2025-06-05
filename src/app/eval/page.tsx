@@ -1470,33 +1470,35 @@ export default function EvalPage() {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data: ApiRetrieverListResponse = await response.json();
         
-        // Transform API retriever data to RAGRetriever format
-        const retrieversFromAPI: RAGRetriever[] = data.retrievers.map((retriever: ApiRetrieverEntry) => ({
-          id: retriever.id,
-          name: retriever.name,
-          description: retriever.description || '',
-          parser: { 
-            moduleId: retriever.parser_id, 
-            parameterValues: {} 
-          },
-          chunker: { 
-            moduleId: retriever.chunker_id, 
-            parameterValues: {} 
-          },
-          indexer: { 
-            moduleId: retriever.indexer_id, 
-            parameterValues: {} 
-          },
-          availableMetrics: [
-            ALL_METRICS.recall, 
-            ALL_METRICS.precision, 
-            ALL_METRICS.f1,
-            ALL_METRICS.bleu, 
-            ALL_METRICS.meteor, 
-            ALL_METRICS.rouge, 
-            ALL_METRICS.response_time,
-          ],
-        }));
+        // Transform API retriever data to RAGRetriever format - only include active retrievers
+        const retrieversFromAPI: RAGRetriever[] = data.retrievers
+          .filter((retriever: ApiRetrieverEntry) => retriever.status === 'active')
+          .map((retriever: ApiRetrieverEntry) => ({
+            id: retriever.id,
+            name: retriever.name,
+            description: retriever.description || '',
+            parser: { 
+              moduleId: retriever.parser_id, 
+              parameterValues: {} 
+            },
+            chunker: { 
+              moduleId: retriever.chunker_id, 
+              parameterValues: {} 
+            },
+            indexer: { 
+              moduleId: retriever.indexer_id, 
+              parameterValues: {} 
+            },
+            availableMetrics: [
+              ALL_METRICS.recall, 
+              ALL_METRICS.precision, 
+              ALL_METRICS.f1,
+              ALL_METRICS.bleu, 
+              ALL_METRICS.meteor, 
+              ALL_METRICS.rouge, 
+              ALL_METRICS.response_time,
+            ],
+          }));
         
         setRagRetrievers(retrieversFromAPI);
       } catch (error) {
