@@ -557,12 +557,9 @@ export default function ChatPage() {
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  // Add state for API libraries and retrievers
-  const [apiLibraries, setApiLibraries] = useState<ApiLibrary[]>([]);
+  // Add state for API retrievers
   const [apiRetrievers, setApiRetrievers] = useState<ApiRetriever[]>([]);
-  const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
   const [isLoadingRetrievers, setIsLoadingRetrievers] = useState(false);
-  const [tempSelectedLibraryId, setTempSelectedLibraryId] = useState<string>("");
   const [tempSelectedRetrieverId, setTempSelectedRetrieverId] = useState<string>("");
 
   // Initialize generator params when session changes (now from session's generator config)
@@ -777,7 +774,6 @@ export default function ChatPage() {
       
       // Reset temporary form values
       setTempSessionName("");
-      setTempSelectedLibraryId("");
       setTempSelectedRetrieverId("");
       
       // Close dialogs
@@ -1100,34 +1096,7 @@ export default function ChatPage() {
     }
   };
 
-  // Add functions to fetch libraries and retrievers from API
-  const fetchLibraries = async () => {
-    try {
-      setIsLoadingLibraries(true);
-      
-      if (!API_URL) {
-        throw new Error('API_URL not configured');
-      }
-
-      const response = await fetch(`${API_URL}/library/`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const libraries: ApiLibrary[] = await response.json();
-      setApiLibraries(libraries);
-      
-      // Set default selection to first library
-      if (libraries.length > 0 && !tempSelectedLibraryId) {
-        setTempSelectedLibraryId(libraries[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to fetch libraries:', error);
-    } finally {
-      setIsLoadingLibraries(false);
-    }
-  };
-
+  // Add function to fetch retrievers from API
   const fetchRetrievers = async () => {
     try {
       setIsLoadingRetrievers(true);
@@ -1181,11 +1150,9 @@ export default function ChatPage() {
                       className="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground"
                       onClick={() => {
                         setIsNewSessionDialogOpen(true);
-                        setTempSelectedLibraryId("");
                         setTempSelectedRetrieverId("");
                         setTempSessionName("");
                         // Fetch API data when dialog opens
-                        fetchLibraries();
                         fetchRetrievers();
                       }}
                     >
@@ -1682,12 +1649,12 @@ export default function ChatPage() {
           {/* New Chat Session Dialog */}
           <Dialog open={isNewSessionDialogOpen} onOpenChange={setIsNewSessionDialogOpen}>
             <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Create New Chat Session</DialogTitle>
-                <DialogDescription>
-                  Configure the settings for your new chat session.
-                </DialogDescription>
-              </DialogHeader>
+                          <DialogHeader>
+              <DialogTitle>Create New Chat Session</DialogTitle>
+              <DialogDescription>
+                Choose a retriever configuration for your new chat session. The retriever includes its associated library.
+              </DialogDescription>
+            </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="session-name" className="text-right">
@@ -1703,42 +1670,7 @@ export default function ChatPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="new-library" className="text-right">
-                    Library
-                  </Label>
-                  <div className="col-span-3">
-                    {isLoadingLibraries ? (
-                      <div className="text-sm text-muted-foreground">Loading libraries...</div>
-                    ) : (
-                      <Select value={tempSelectedLibraryId} onValueChange={setTempSelectedLibraryId}>
-                        <SelectTrigger id="new-library">
-                          <SelectValue placeholder="Select a library">
-                            {tempSelectedLibraryId ? 
-                              apiLibraries.find(lib => lib.id === tempSelectedLibraryId)?.library_name || "Unknown Library"
-                              : "Select a library"
-                            }
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {apiLibraries.map(lib => (
-                            <SelectItem key={lib.id} value={lib.id}>
-                              <div className="flex flex-col space-y-1 py-1">
-                                <div className="font-medium">{lib.library_name}</div>
-                                {lib.description && (
-                                  <div className="text-xs text-muted-foreground line-clamp-2">{lib.description}</div>
-                                )}
-                                <div className="text-xs text-muted-foreground">
-                                  {lib.stats.file_count} files, {(lib.stats.total_size / 1024 / 1024).toFixed(1)} MB
-                                </div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                </div>
+
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="new-retriever" className="text-right">
                     Retriever
@@ -1765,8 +1697,7 @@ export default function ChatPage() {
                                   <div className="text-xs text-muted-foreground line-clamp-2">{retriever.description}</div>
                                 )}
                                 <div className="text-xs text-muted-foreground">
-                                  {retriever.total_chunks ? `${retriever.total_chunks.toLocaleString()} chunks` : 'No chunks'} • 
-                                  Library: {apiLibraries.find(lib => lib.id === retriever.library_id)?.library_name || 'Unknown'}
+                                  {retriever.total_chunks ? `${retriever.total_chunks.toLocaleString()} chunks` : 'No chunks'}
                                 </div>
                               </div>
                             </SelectItem>
@@ -1783,7 +1714,6 @@ export default function ChatPage() {
                   onClick={() => {
                     setIsNewSessionDialogOpen(false);
                     setTempSessionName("");
-                    setTempSelectedLibraryId("");
                     setTempSelectedRetrieverId("");
                   }}
                 >
@@ -1791,7 +1721,7 @@ export default function ChatPage() {
                 </Button>
                 <Button 
                   onClick={createNewChatSession}
-                  disabled={!tempSelectedRetrieverId || isLoadingLibraries || isLoadingRetrievers}
+                  disabled={!tempSelectedRetrieverId || isLoadingRetrievers}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
                     <path d="M12 5v14M5 12h14"/>
