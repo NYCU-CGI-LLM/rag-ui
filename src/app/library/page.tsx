@@ -65,6 +65,7 @@ export default function LibraryPage() {
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const dndFileInputRef = useRef<HTMLInputElement>(null);
 
   const ALLOWED_FILE_TYPES = [
@@ -212,6 +213,7 @@ export default function LibraryPage() {
 
   const handleSelectLibrary = async (library: Library) => {
     setSelectedDocuments([]);
+    setSearchQuery("");
     await refreshLibraryDetails(library.id);
   };
 
@@ -220,6 +222,7 @@ export default function LibraryPage() {
     setSelectedDocuments([]);
     setIsEditingName(false);
     setEditedLibraryName("");
+    setSearchQuery("");
   };
 
   const handleDuplicateLibrary = () => {
@@ -252,10 +255,24 @@ export default function LibraryPage() {
   };
 
   const toggleSelectAllDocuments = () => {
-    if (selectedDocuments.length === documents.length) {
-      setSelectedDocuments([]);
+    const filteredDocuments = documents
+      .filter((file) => file.id != null)
+      .filter((file) => 
+        searchQuery === "" || 
+        file.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    
+    const filteredDocumentIds = filteredDocuments.map((doc) => doc.id);
+    const allFilteredSelected = filteredDocumentIds.every(id => selectedDocuments.includes(id));
+    
+    if (allFilteredSelected && filteredDocumentIds.length > 0) {
+      // Deselect all filtered documents
+      setSelectedDocuments(selectedDocuments.filter(id => !filteredDocumentIds.includes(id)));
     } else {
-      setSelectedDocuments(documents.map((doc) => doc.id));
+      // Select all filtered documents
+      const newSelection = [...new Set([...selectedDocuments, ...filteredDocumentIds])];
+      setSelectedDocuments(newSelection);
     }
   };
 
@@ -469,6 +486,8 @@ export default function LibraryPage() {
                     variant="destructive" 
                     onClick={() => setIsDeleteLibraryDialogOpen(true)}
                     className="flex items-center"
+                    disabled
+                    title="Coming soon"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete Library
@@ -531,19 +550,20 @@ export default function LibraryPage() {
             
             <div className="mt-6">
               <div className="flex mb-4 items-center">
-                <Input
-                  type="file"
-                  className="mr-2 max-w-xs"
-                  onChange={(e) => e.target.files && setFileToUpload(e.target.files[0])}
-                  accept=".pdf,.doc,.docx,.txt,.csv,.json,.md"
-                  value={fileToUpload ? undefined : ''}
+                <Input 
+                  type="text" 
+                  placeholder="Search files..." 
+                  className="max-w-xs mr-4"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                {fileToUpload && (
-                  <Button onClick={handleMainUploadButtonClick} disabled={isUploading} className="mr-2">
-                    {isUploading ? "Uploading..." : `Upload ${fileToUpload.name.substring(0,20)}${fileToUpload.name.length > 20 ? '...' : '' }`}
-                  </Button>
-                )}
-                <Button variant="outline" className="mr-2" onClick={handleDuplicateLibrary}>
+                <Button 
+                  variant="outline" 
+                  className="mr-2" 
+                  onClick={handleDuplicateLibrary}
+                  disabled
+                  title="Coming soon"
+                >
                   Duplicate Library
                 </Button>
                 {selectedDocuments.length > 0 && (
@@ -568,60 +588,77 @@ export default function LibraryPage() {
                     </DialogContent>
                   </Dialog>
                 )}
-                <div className="flex-1"></div>
-                <Input 
-                  type="text" 
-                  placeholder="Search files..." 
-                  className="w-64"
-                />
               </div>
               
-              {documents.length > 0 ? (
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-muted">
-                    <tr>
-                        <th className="py-2 px-4 text-left w-10">
-                          <Checkbox
-                            checked={documents.length > 0 && selectedDocuments.length === documents.length}
-                            onCheckedChange={toggleSelectAllDocuments}
-                            aria-label="Select all documents"
-                          />
-                        </th>
-                      <th className="text-left py-2 px-4">File Name</th>
-                      <th className="text-left py-2 px-4">Size</th>
-                      <th className="text-left py-2 px-4">Upload Date</th>
-                      <th className="text-left py-2 px-4">Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {documents
-                      .filter((file) => file.id != null)
-                      .map((file) => (
-                        <tr key={file.id} className="border-t">
-                          <td className="py-2 px-4">
-                            <Checkbox
-                              checked={selectedDocuments.includes(file.id)}
-                              onCheckedChange={() => toggleDocumentSelection(file.id)}
-                              aria-label={`Select document ${file.file_name}`}
-                            />
-                          </td>
-                          <td className="py-2 px-4">{file.file_name}</td>
-                          <td className="py-2 px-4">{(file.size_bytes / (1024*1024)).toFixed(2)} MB</td>
-                          <td className="py-2 px-4">{new Date(file.uploaded_at).toLocaleDateString()}</td>
-                          <td className="py-2 px-4">{file.mime_type}</td>
+              {(() => {
+                const filteredDocuments = documents
+                  .filter((file) => file.id != null)
+                  .filter((file) => 
+                    searchQuery === "" || 
+                    file.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    file.mime_type.toLowerCase().includes(searchQuery.toLowerCase())
+                  );
+
+                if (documents.length === 0) {
+                  return (
+                    <Card className="mt-4 text-center">
+                      <CardContent className="p-6">
+                        <p className="text-muted-foreground">No documents in this library yet.</p>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+
+                if (filteredDocuments.length === 0 && searchQuery !== "") {
+                  return (
+                    <Card className="mt-4 text-center">
+                      <CardContent className="p-6">
+                        <p className="text-muted-foreground">No files found matching "{searchQuery}"</p>
+                      </CardContent>
+                    </Card>
+                  );
+                }
+
+                return (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full">
+                      <thead className="bg-muted">
+                        <tr>
+                            <th className="py-2 px-4 text-left w-10">
+                              <Checkbox
+                                checked={filteredDocuments.length > 0 && 
+                                         filteredDocuments.every(doc => selectedDocuments.includes(doc.id))}
+                                onCheckedChange={toggleSelectAllDocuments}
+                                aria-label="Select all documents"
+                              />
+                            </th>
+                          <th className="text-left py-2 px-4">File Name</th>
+                          <th className="text-left py-2 px-4">Size</th>
+                          <th className="text-left py-2 px-4">Upload Date</th>
+                          <th className="text-left py-2 px-4">Type</th>
                         </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-              ) : (
-                <Card className="mt-4 text-center">
-                  <CardContent className="p-6">
-                    <p className="text-muted-foreground">No documents in this library yet.</p>
-                  </CardContent>
-                </Card>
-              )}
+                      </thead>
+                      <tbody>
+                        {filteredDocuments.map((file) => (
+                          <tr key={file.id} className="border-t">
+                            <td className="py-2 px-4">
+                              <Checkbox
+                                checked={selectedDocuments.includes(file.id)}
+                                onCheckedChange={() => toggleDocumentSelection(file.id)}
+                                aria-label={`Select document ${file.file_name}`}
+                              />
+                            </td>
+                            <td className="py-2 px-4">{file.file_name}</td>
+                            <td className="py-2 px-4">{(file.size_bytes / (1024*1024)).toFixed(2)} MB</td>
+                            <td className="py-2 px-4">{new Date(file.uploaded_at).toLocaleDateString()}</td>
+                            <td className="py-2 px-4">{file.mime_type}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
               
               <Card 
                 className={`mt-4 border-dashed text-center cursor-pointer ${isDraggingOver ? 'border-primary bg-secondary' : ''}`}
@@ -682,17 +719,6 @@ export default function LibraryPage() {
                   </CardFooter>
                 </Card>
               ))}
-              
-              <Card 
-                key="add-new"
-                className="border-dashed flex items-center justify-center cursor-pointer"
-                onClick={handleCreateLibrary}
-              >
-                <CardContent className="text-center p-6">
-                  <div className="text-4xl text-muted-foreground mb-2">+</div>
-                  <div className="text-muted-foreground">Add New Library</div>
-                </CardContent>
-              </Card>
             </div>
           </>
         )}
