@@ -839,26 +839,31 @@ export default function ChatPage() {
 
   // Transform API chat data to ChatSession format
   const transformApiChatToSession = (apiChat: ApiChatSummary): ChatSession => {
-    // Format the last activity timestamp - ensure proper timezone handling
-    const lastActivity = new Date(apiChat.last_activity);
-    const now = new Date();
-    const diffInHours = (now.getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
-    
+    // Parse as UTC by appending 'Z'
+    const localLastActivity = new Date(apiChat.last_activity + "Z");
+    const localNow = new Date();
+
+    // Determine if localLastActivity is today or yesterday
+    const isToday = localLastActivity.toDateString() === localNow.toDateString();
+    const yesterday = new Date(localNow);
+    yesterday.setDate(localNow.getDate() - 1);
+    const isYesterday = localLastActivity.toDateString() === yesterday.toDateString();
+
     let timestamp: string;
-    if (diffInHours < 24) {
-      timestamp = `Today, ${lastActivity.toLocaleTimeString([], { 
+    if (isToday) {
+      timestamp = `Today, ${localLastActivity.toLocaleTimeString([], { 
         hour: '2-digit', 
         minute: '2-digit',
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       })}`;
-    } else if (diffInHours < 48) {
-      timestamp = `Yesterday, ${lastActivity.toLocaleTimeString([], { 
+    } else if (isYesterday) {
+      timestamp = `Yesterday, ${localLastActivity.toLocaleTimeString([], { 
         hour: '2-digit', 
         minute: '2-digit',
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
       })}`;
     } else {
-      timestamp = lastActivity.toLocaleDateString('en-US', {
+      timestamp = localLastActivity.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
@@ -953,13 +958,13 @@ export default function ChatPage() {
 
   // Transform API messages to local Message format
   const transformApiMessagesToLocal = (apiMessages: ApiMessage[]): Message[] => {
-    // Sort messages by creation time to ensure correct order
-    const sortedMessages = [...apiMessages].sort((a, b) => 
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    // Sort messages by creation time to ensure correct order (treat as UTC)
+    const sortedMessages = [...apiMessages].sort((a, b) =>
+      new Date(a.created_at + "Z").getTime() - new Date(b.created_at + "Z").getTime()
     );
     
     return sortedMessages.map((apiMsg, index) => {
-      const timestamp = new Date(apiMsg.created_at).toLocaleTimeString([], { 
+      const timestamp = new Date(apiMsg.created_at + "Z").toLocaleTimeString([], { 
         hour: '2-digit', 
         minute: '2-digit',
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
