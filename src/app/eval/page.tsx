@@ -36,7 +36,7 @@ import {
 import { useRouter } from 'next/navigation';
 
 // API Configuration
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = "/api";
 
 // API Response Interfaces for Parser Data
 interface ApiParserParameterValue {

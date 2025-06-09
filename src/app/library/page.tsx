@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 // Base URL for backend API
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = "/api";
 import { PageLayout } from "@/components/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

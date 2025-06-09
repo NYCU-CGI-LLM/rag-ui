@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Settings, Eye } from 'lucide-react';
 
 // API Configuration
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = "/api";
 
 // Type Definitions (Copied from original eval/page.tsx, consider moving to a shared file)
 interface ApiParserParameterValue {

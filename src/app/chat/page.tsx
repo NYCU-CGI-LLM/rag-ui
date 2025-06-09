@@ -291,7 +291,7 @@ function ChatMessage({ isUser, content, timestamp = "Just now" }: Omit<Message, 
 }
 
 // API Configuration
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = "/api";
 
 // API Response Interfaces for Chat
 interface ApiChatConfig {
