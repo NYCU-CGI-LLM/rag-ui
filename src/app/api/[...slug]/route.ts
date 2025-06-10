@@ -13,10 +13,23 @@ async function handler(req: NextRequest) {
 
 
   try {
+    // Parse and prepare request body only for methods other than GET/HEAD
+    let body: any = undefined;
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        body = JSON.stringify(await req.json());
+      } else if (contentType.includes('application/x-www-form-urlencoded')) {
+        body = await req.text();
+      } else {
+        // Fallback: pass through raw body stream
+        body = await req.text();
+      }
+    }
     const response = await fetch(apiUrl, {
       method: req.method,
       headers: headers,
-      body: req.body,
+      body: body,
       // @ts-ignore
       duplex: 'half',
     });
