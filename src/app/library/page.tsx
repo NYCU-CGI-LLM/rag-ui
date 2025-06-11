@@ -98,30 +98,18 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(() => {
-    console.log("[useEffect on documents change] Current documents:", documents);
-    const ids = documents.map(doc => doc.id);
-    console.log("[useEffect on documents change] Document IDs:", JSON.stringify(ids));
-
-    const undefinedOrNullIds = documents.filter(doc => doc.id === undefined || doc.id === null);
-    if (undefinedOrNullIds.length > 0) {
-      console.warn("[useEffect on documents change] UNDEFINED/NULL IDs FOUND:", undefinedOrNullIds);
-    }
-
+    // Check for duplicate document IDs
+    const ids = documents.map(doc => doc.id).filter(id => id != null);
     const idCounts: Record<string, number> = {};
     ids.forEach(id => {
-      if (id !== undefined && id !== null) { // Only count valid IDs for duplication check
-        idCounts[id] = (idCounts[id] || 0) + 1;
-      }
+      idCounts[id] = (idCounts[id] || 0) + 1;
     });
 
     const duplicates = Object.entries(idCounts).filter(([_, count]) => count > 1).map(([id, _]) => id);
     if (duplicates.length > 0) {
-      console.warn("[useEffect on documents change] DUPLICATE IDs FOUND:", duplicates);
-      console.warn("[useEffect on documents change] Full documents array with duplicates:", 
-        documents.filter(doc => duplicates.includes(doc.id))
-      );
+      console.warn("Duplicate document IDs found:", duplicates);
     }
-  }, [documents]); // This effect runs when 'documents' state changes
+  }, [documents]);
 
   const handleCreateLibrary = () => {
     setIsCreatingLibrary(true);
@@ -177,7 +165,6 @@ export default function LibraryPage() {
   const refreshLibraryDetails = async (libraryId: string) => {
     if (!libraryId) return;
     try {
-      console.log(`Refreshing details for library ID: ${libraryId}`);
       const response = await fetch(`${API_URL}/library/${libraryId}`);
       if (!response.ok) {
         let errorText = `Failed to refresh library details (ID: ${libraryId})`;
@@ -188,7 +175,6 @@ export default function LibraryPage() {
         throw new Error(errorText);
       }
       const detailedLibraryData = await response.json();
-      console.log("Refreshed Detailed Library API raw:", detailedLibraryData);
 
       setCurrentLibrary(detailedLibraryData);
       const fetchedFiles = detailedLibraryData.files?.map((file: any) => ({
@@ -227,15 +213,10 @@ export default function LibraryPage() {
 
   const handleDuplicateLibrary = () => {
     if (currentLibrary) {
-      const duplicateLibraryData = {
-        library_name: `${currentLibrary.library_name} copy`,
-        description: currentLibrary.description,
-      };
-      console.log("Simulating duplicate library for:", currentLibrary.id, "with data:", duplicateLibraryData);
       const newDuplicatedLibrary: Library = {
         id: `local_dup_${Date.now()}`,
-        library_name: duplicateLibraryData.library_name,
-        description: duplicateLibraryData.description,
+        library_name: `${currentLibrary.library_name} copy`,
+        description: currentLibrary.description,
         stats: { ...currentLibrary.stats },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -293,14 +274,9 @@ export default function LibraryPage() {
 
   const handleRenameLibrary = () => {
     if (currentLibrary && editedLibraryName.trim() !== "") {
-      const updatedLibraryData = {
-        library_name: editedLibraryName.trim(),
-        description: currentLibrary.description,
-      };
-      console.log("Simulating rename library:", currentLibrary.id, "to:", updatedLibraryData.library_name);
       const updatedLibrary = { 
         ...currentLibrary, 
-        library_name: updatedLibraryData.library_name,
+        library_name: editedLibraryName.trim(),
         updated_at: new Date().toISOString()
       };
       setCurrentLibrary(updatedLibrary);
@@ -328,54 +304,34 @@ export default function LibraryPage() {
   };
 
   const validateFile = (file: File): boolean => {
-    console.log(`[VALIDATE] Validating file: ${file.name}`);
-    console.log(`[VALIDATE] File type: ${file.type}`);
-    console.log(`[VALIDATE] File size: ${file.size} bytes (${(file.size / (1024*1024)).toFixed(2)}MB)`);
-    console.log(`[VALIDATE] Allowed types:`, ALLOWED_FILE_TYPES);
-    console.log(`[VALIDATE] Max size: ${MAX_FILE_SIZE_MB}MB`);
-
     if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      console.error(`[VALIDATE] Invalid file type: ${file.type}`);
       alert(`Invalid file type: ${file.type}. Supported types: PDF, DOC, DOCX, TXT, CSV, JSON, MD`);
       return false;
     }
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      console.error(`[VALIDATE] File too large: ${(file.size / (1024*1024)).toFixed(2)}MB > ${MAX_FILE_SIZE_MB}MB`);
       alert(`File is too large (${(file.size / (1024*1024)).toFixed(2)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
       return false;
     }
-    
-    console.log(`[VALIDATE] File validation passed`);
     return true;
   };
 
   const executeUpload = async (file: File) => {
-    const uploadStartTime = Date.now();
-    console.log(`[UPLOAD] Starting upload for file: ${file.name} (${file.size} bytes, ${file.type})`);
-    console.log(`[UPLOAD] Current library:`, currentLibrary?.id, currentLibrary?.library_name);
-
     if (!currentLibrary) {
-      console.error("[UPLOAD] No library selected");
       alert("Please ensure a library is selected.");
       return;
     }
     
     if (!validateFile(file)) {
-      console.error("[UPLOAD] File validation failed");
       if (dndFileInputRef.current) dndFileInputRef.current.value = "";
       setFileToUpload(null);
       return;
     }
 
     setIsUploading(true);
-    console.log(`[UPLOAD] Creating FormData...`);
     const formData = new FormData();
     formData.append("file", file);
-    
-    console.log(`[UPLOAD] FormData created, making request to: ${API_URL}/library/${currentLibrary.id}/file`);
 
     try {
-      const requestStartTime = Date.now();
       const response = await fetch(`${API_URL}/library/${currentLibrary.id}/file`, {
         method: "POST",
         body: formData,
@@ -384,21 +340,14 @@ export default function LibraryPage() {
         },
       });
 
-      const requestDuration = Date.now() - requestStartTime;
-      console.log(`[UPLOAD] Request completed in ${requestDuration}ms, status: ${response.status} ${response.statusText}`);
-      console.log(`[UPLOAD] Response headers:`, Object.fromEntries(response.headers.entries()));
-
       if (response.ok) {
-        console.log(`[UPLOAD] Upload successful, parsing response...`);
         let newFileData;
         try {
           const responseText = await response.text();
-          console.log(`[UPLOAD] Raw response:`, responseText);
           newFileData = JSON.parse(responseText);
-          console.log(`[UPLOAD] Parsed response:`, newFileData);
         } catch (parseError) {
-          console.error(`[UPLOAD] Error parsing success response:`, parseError);
-          throw new Error(`Failed to parse success response: ${parseError}`);
+          console.error("Error parsing upload response:", parseError);
+          throw new Error(`Failed to parse upload response: ${parseError}`);
         }
 
         const newDocument: Document = {
@@ -409,12 +358,7 @@ export default function LibraryPage() {
           mime_type: newFileData.mime_type,
         };
         
-        console.log(`[UPLOAD] New document created:`, newDocument);
-        setDocuments((prevDocs) => {
-          const updatedDocs = [...prevDocs, newDocument].filter((file) => file.id != null);
-          console.log(`[UPLOAD] Updated documents list:`, updatedDocs.map(d => ({id: d.id, name: d.file_name})));
-          return updatedDocs;
-        });
+        setDocuments((prevDocs) => [...prevDocs, newDocument].filter((file) => file.id != null));
         
         if (currentLibrary) {
           const updatedStats = {
@@ -426,66 +370,40 @@ export default function LibraryPage() {
             stats: updatedStats, 
             updated_at: new Date().toISOString() 
           };
-          console.log(`[UPLOAD] Updating library stats:`, updatedStats);
           setCurrentLibrary(updatedLibrary);
           setLibraries(prevLibs => 
             prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib)
           );
         }
         
-        console.log(`[UPLOAD] Refreshing library details...`);
         if (currentLibrary) {
           await refreshLibraryDetails(currentLibrary.id);
         }
         
-        const totalDuration = Date.now() - uploadStartTime;
-        console.log(`[UPLOAD] Upload completed successfully in ${totalDuration}ms`);
         alert("File uploaded successfully!");
       } else {
-        console.error(`[UPLOAD] Upload failed with status ${response.status} ${response.statusText}`);
         let errorMessage = `Upload failed. Status: ${response.status}`;
-        let errorDetails = null;
         
         try {
           const responseText = await response.text();
-          console.log(`[UPLOAD] Error response text:`, responseText);
+          const errorDetails = JSON.parse(responseText);
           
-          try {
-            errorDetails = JSON.parse(responseText);
-            console.log(`[UPLOAD] Parsed error details:`, errorDetails);
-            
-            if (errorDetails.detail) {
-              errorMessage = typeof errorDetails.detail === 'string' ? errorDetails.detail : JSON.stringify(errorDetails.detail);
-            } else if (errorDetails.error) {
-              errorMessage = errorDetails.error;
-            }
-          } catch (jsonError) {
-            console.log(`[UPLOAD] Error response is not JSON, using as text`);
-            errorMessage = responseText || errorMessage;
+          if (errorDetails.detail) {
+            errorMessage = typeof errorDetails.detail === 'string' ? errorDetails.detail : JSON.stringify(errorDetails.detail);
+          } else if (errorDetails.error) {
+            errorMessage = errorDetails.error;
           }
-        } catch (textError) {
-          console.error(`[UPLOAD] Error reading error response:`, textError);
+        } catch (e) {
+          // Use default error message if response parsing fails
         }
 
-        console.error(`[UPLOAD] Final error message:`, errorMessage);
+        console.error("Upload failed:", errorMessage);
         alert(`Error: ${errorMessage}`);
       }
     } catch (error) {
-      const totalDuration = Date.now() - uploadStartTime;
-      console.error(`[UPLOAD] Unexpected error after ${totalDuration}ms:`, error);
-      console.error(`[UPLOAD] Error details:`, {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        libraryId: currentLibrary?.id,
-      });
-      
+      console.error("Upload error:", error);
       alert(`An unexpected error occurred during upload: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      const totalDuration = Date.now() - uploadStartTime;
-      console.log(`[UPLOAD] Upload process finished after ${totalDuration}ms`);
       setIsUploading(false);
       setFileToUpload(null);
       if (dndFileInputRef.current) dndFileInputRef.current.value = "";
@@ -526,21 +444,12 @@ export default function LibraryPage() {
     e.stopPropagation();
     setIsDraggingOver(false);
     
-    console.log(`[DRAG&DROP] File dropped`);
-    console.log(`[DRAG&DROP] Is uploading:`, isUploading);
-    
-    if (isUploading) {
-      console.log(`[DRAG&DROP] Upload in progress, ignoring drop`);
-      return;
-    }
+    if (isUploading) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFile = e.dataTransfer.files[0];
-      console.log(`[DRAG&DROP] Dropped file:`, droppedFile.name, droppedFile.size, droppedFile.type);
       executeUpload(droppedFile);
       e.dataTransfer.clearData();
-    } else {
-      console.log(`[DRAG&DROP] No files in drop event`);
     }
   };
 
@@ -550,15 +459,9 @@ export default function LibraryPage() {
   };
 
   const handleDndCardFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log(`[FILE_SELECT] File selected via input`);
-    console.log(`[FILE_SELECT] Files count:`, e.target.files?.length || 0);
-    
     if (e.target.files && e.target.files.length > 0) {
       const selectedFile = e.target.files[0];
-      console.log(`[FILE_SELECT] Selected file:`, selectedFile.name, selectedFile.size, selectedFile.type);
       executeUpload(selectedFile);
-    } else {
-      console.log(`[FILE_SELECT] No files selected`);
     }
   };
 
