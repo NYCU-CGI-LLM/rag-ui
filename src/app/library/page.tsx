@@ -27,7 +27,7 @@ import {
   DialogTrigger,
   DialogClose
 } from "@/components/ui/dialog";
-import { Trash2 } from 'lucide-react';
+import { Trash2, Eye, Download } from 'lucide-react';
 
 // Define types
 interface Library {
@@ -541,6 +541,44 @@ export default function LibraryPage() {
     }
   };
 
+  const handlePreviewFile = (file: Document) => {
+    if (!currentLibrary) return;
+    
+    // Open PDF preview in new tab
+    const previewUrl = `${API_URL}/library/${currentLibrary.id}/file/${file.id}/preview`;
+    window.open(previewUrl, '_blank');
+  };
+
+  const handleDownloadFile = async (file: Document) => {
+    if (!currentLibrary) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/library/${currentLibrary.id}/file/${file.id}/download`, {
+        method: 'GET',
+        headers: {
+          'accept': '*/*',
+        },
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.file_name;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert('Failed to download file');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('An error occurred while downloading the file');
+    }
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
@@ -696,18 +734,19 @@ export default function LibraryPage() {
                     <table className="w-full">
                       <thead className="bg-muted">
                         <tr>
-                            <th className="py-2 px-4 text-left w-10">
-                              <Checkbox
-                                checked={filteredDocuments.length > 0 && 
-                                         filteredDocuments.every(doc => selectedDocuments.includes(doc.id))}
-                                onCheckedChange={toggleSelectAllDocuments}
-                                aria-label="Select all documents"
-                              />
-                            </th>
+                          <th className="py-2 px-4 text-left w-10">
+                            <Checkbox
+                              checked={filteredDocuments.length > 0 && 
+                                       filteredDocuments.every(doc => selectedDocuments.includes(doc.id))}
+                              onCheckedChange={toggleSelectAllDocuments}
+                              aria-label="Select all documents"
+                            />
+                          </th>
                           <th className="text-left py-2 px-4">File Name</th>
                           <th className="text-left py-2 px-4">Size</th>
                           <th className="text-left py-2 px-4">Upload Date</th>
                           <th className="text-left py-2 px-4">Type</th>
+                          <th className="text-left py-2 px-4 w-20">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -724,6 +763,30 @@ export default function LibraryPage() {
                             <td className="py-2 px-4">{(file.size_bytes / (1024*1024)).toFixed(2)} MB</td>
                             <td className="py-2 px-4">{new Date(file.uploaded_at).toLocaleDateString()}</td>
                             <td className="py-2 px-4">{file.mime_type}</td>
+                            <td className="py-2 px-4">
+                              {file.mime_type === 'application/pdf' && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handlePreviewFile(file)}
+                                    title="Preview PDF"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handleDownloadFile(file)}
+                                    title="Download PDF"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
