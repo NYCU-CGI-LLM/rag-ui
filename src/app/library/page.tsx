@@ -69,6 +69,7 @@ export default function LibraryPage() {
   const dndFileInputRef = useRef<HTMLInputElement>(null);
   const [isRenamingLibrary, setIsRenamingLibrary] = useState(false);
   const [isDeletingLibrary, setIsDeletingLibrary] = useState(false);
+  const [isDeletingDocuments, setIsDeletingDocuments] = useState(false);
 
   const ALLOWED_FILE_TYPES = [
     "application/pdf", 
@@ -259,19 +260,42 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDeleteSelectedDocuments = () => {
-    setDocuments((prevDocs) =>
-      prevDocs.filter((doc) => !selectedDocuments.includes(doc.id))
-    );
-    if (currentLibrary) {
-        const newFileCount = currentLibrary.stats.file_count - selectedDocuments.length;
-        const updatedStats = { ...currentLibrary.stats, file_count: newFileCount > 0 ? newFileCount : 0 };
-        const updatedLibrary = { ...currentLibrary, stats: updatedStats, updated_at: new Date().toISOString() };
-        setCurrentLibrary(updatedLibrary);
-        setLibraries(prevLibs => prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib));
+  const handleDeleteSelectedDocuments = async () => {
+    if (!currentLibrary || selectedDocuments.length === 0) return;
+    
+    setIsDeletingDocuments(true);
+    try {
+      // Delete each selected document
+      const deletePromises = selectedDocuments.map(async (documentId) => {
+        const response = await fetch(`${API_URL}/library/${currentLibrary.id}/file/${documentId}`, {
+          method: 'DELETE',
+          headers: {
+            'accept': '*/*',
+          },
+        });
+        
+        if (!response.ok && response.status !== 204) {
+          throw new Error(`Failed to delete file ${documentId}. Status: ${response.status}`);
+        }
+        
+        return documentId;
+      });
+      
+      await Promise.all(deletePromises);
+      
+      // Refresh library details to get updated file list and stats
+      await refreshLibraryDetails(currentLibrary.id);
+      
+      setSelectedDocuments([]);
+      setIsDeleteDialogOpen(false);
+      
+      alert(`Successfully deleted ${selectedDocuments.length} file(s).`);
+    } catch (error) {
+      console.error('Error deleting documents:', error);
+      alert(`An error occurred while deleting files: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsDeletingDocuments(false);
     }
-    setSelectedDocuments([]);
-    setIsDeleteDialogOpen(false);
   };
 
   const handleRenameLibrary = async () => {
@@ -628,8 +652,10 @@ export default function LibraryPage() {
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-                        <Button variant="destructive" onClick={handleDeleteSelectedDocuments}>Delete</Button>
+                        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeletingDocuments}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleDeleteSelectedDocuments} disabled={isDeletingDocuments}>
+                          {isDeletingDocuments ? 'Deleting...' : 'Delete'}
+                        </Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
