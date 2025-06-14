@@ -68,6 +68,7 @@ export default function LibraryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const dndFileInputRef = useRef<HTMLInputElement>(null);
   const [isRenamingLibrary, setIsRenamingLibrary] = useState(false);
+  const [isDeletingLibrary, setIsDeletingLibrary] = useState(false);
 
   const ALLOWED_FILE_TYPES = [
     "application/pdf", 
@@ -320,12 +321,37 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDeleteLibrary = () => {
+  const handleDeleteLibrary = async () => {
     if (currentLibrary) {
-      setLibraries(prev => prev.filter(lib => lib.id !== currentLibrary.id));
-      setCurrentLibrary(null);
-      setSelectedDocuments([]);
-      setIsDeleteLibraryDialogOpen(false);
+      setIsDeletingLibrary(true);
+      try {
+        const response = await fetch(`${API_URL}/library/${currentLibrary.id}`, {
+          method: 'DELETE',
+          headers: {
+            'accept': '*/*',
+          },
+        });
+        if (response.ok || response.status === 204) {
+          setLibraries(prev => prev.filter(lib => lib.id !== currentLibrary.id));
+          setCurrentLibrary(null);
+          setSelectedDocuments([]);
+          setIsDeleteLibraryDialogOpen(false);
+        } else {
+          let errorMessage = `Failed to delete library. Status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.detail) {
+              errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+            }
+          } catch (e) {}
+          alert(errorMessage);
+        }
+      } catch (error) {
+        alert('An unexpected error occurred while deleting the library. See console for details.');
+        console.error('Error deleting library:', error);
+      } finally {
+        setIsDeletingLibrary(false);
+      }
     }
   };
 
@@ -507,8 +533,6 @@ export default function LibraryPage() {
                     variant="destructive" 
                     onClick={() => setIsDeleteLibraryDialogOpen(true)}
                     className="flex items-center"
-                    disabled
-                    title="Coming soon"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete Library
@@ -585,8 +609,6 @@ export default function LibraryPage() {
                   variant="outline" 
                   className="mr-2" 
                   onClick={handleDuplicateLibrary}
-                  disabled
-                  title="Coming soon"
                 >
                   Duplicate Library
                 </Button>
@@ -798,11 +820,11 @@ export default function LibraryPage() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex justify-between mt-6 gap-4">
-              <Button variant="outline" onClick={() => setIsDeleteLibraryDialogOpen(false)} className="flex-1">
+              <Button variant="outline" onClick={() => setIsDeleteLibraryDialogOpen(false)} className="flex-1" disabled={isDeletingLibrary}>
                 Keep
               </Button>
-              <Button variant="destructive" onClick={handleDeleteLibrary} className="flex-1">
-                Delete
+              <Button variant="destructive" onClick={handleDeleteLibrary} className="flex-1" disabled={isDeletingLibrary}>
+                {isDeletingLibrary ? 'Deleting...' : 'Delete'}
               </Button>
             </DialogFooter>
           </DialogContent>
