@@ -67,6 +67,7 @@ export default function LibraryPage() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const dndFileInputRef = useRef<HTMLInputElement>(null);
+  const [isRenamingLibrary, setIsRenamingLibrary] = useState(false);
 
   const ALLOWED_FILE_TYPES = [
     "application/pdf", 
@@ -272,18 +273,43 @@ export default function LibraryPage() {
     setIsDeleteDialogOpen(false);
   };
 
-  const handleRenameLibrary = () => {
+  const handleRenameLibrary = async () => {
     if (currentLibrary && editedLibraryName.trim() !== "") {
-      const updatedLibrary = { 
-        ...currentLibrary, 
+      setIsRenamingLibrary(true);
+      const updatedLibraryData = {
         library_name: editedLibraryName.trim(),
-        updated_at: new Date().toISOString()
+        description: currentLibrary.description,
       };
-      setCurrentLibrary(updatedLibrary);
-      setLibraries(prev => prev.map(lib => 
-        lib.id === updatedLibrary.id ? updatedLibrary : lib
-      ));
-      setIsEditingName(false);
+      try {
+        const response = await fetch(`${API_URL}/library/${currentLibrary.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "accept": "application/json",
+          },
+          body: JSON.stringify(updatedLibraryData),
+        });
+        if (response.ok) {
+          const updatedLibrary = await response.json();
+          setCurrentLibrary(updatedLibrary);
+          setLibraries(prev => prev.map(lib =>
+            lib.id === updatedLibrary.id ? updatedLibrary : lib
+          ));
+          setIsEditingName(false);
+        } else {
+          const errorData = await response.json();
+          let errorMessage = `Failed to update library. Status: ${response.status}`;
+          if (errorData.detail) {
+            errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+          }
+          alert(errorMessage);
+        }
+      } catch (error) {
+        alert("An unexpected error occurred while updating the library. See console for details.");
+        console.error("Error updating library:", error);
+      } finally {
+        setIsRenamingLibrary(false);
+      }
     }
   };
 
@@ -491,32 +517,35 @@ export default function LibraryPage() {
                 <div className="mt-2 flex items-center">
                   {isEditingName ? (
                     <div className="flex items-center">
-                      <Input 
+                      <Input
                         value={editedLibraryName}
                         onChange={(e) => setEditedLibraryName(e.target.value)}
                         className="text-2xl font-bold h-auto py-1 mr-2"
                         autoFocus
+                        disabled={isRenamingLibrary}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === 'Enter' && !isRenamingLibrary) {
                             handleRenameLibrary();
-                          } else if (e.key === 'Escape') {
+                          } else if (e.key === 'Escape' && !isRenamingLibrary) {
                             setIsEditingName(false);
                           }
                         }}
                       />
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={handleRenameLibrary}
                         className="h-8 px-2"
+                        disabled={isRenamingLibrary}
                       >
-                        Save
+                        {isRenamingLibrary ? 'Saving...' : 'Save'}
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setIsEditingName(false)}
                         className="h-8 px-2"
+                        disabled={isRenamingLibrary}
                       >
                         Cancel
                       </Button>
