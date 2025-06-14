@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 // Base URL for backend API
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const API_URL = "/api";
 import { PageLayout } from "@/components/page-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,30 +98,18 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(() => {
-    console.log("[useEffect on documents change] Current documents:", documents);
-    const ids = documents.map(doc => doc.id);
-    console.log("[useEffect on documents change] Document IDs:", JSON.stringify(ids));
-
-    const undefinedOrNullIds = documents.filter(doc => doc.id === undefined || doc.id === null);
-    if (undefinedOrNullIds.length > 0) {
-      console.warn("[useEffect on documents change] UNDEFINED/NULL IDs FOUND:", undefinedOrNullIds);
-    }
-
+    // Check for duplicate document IDs
+    const ids = documents.map(doc => doc.id).filter(id => id != null);
     const idCounts: Record<string, number> = {};
     ids.forEach(id => {
-      if (id !== undefined && id !== null) { // Only count valid IDs for duplication check
-        idCounts[id] = (idCounts[id] || 0) + 1;
-      }
+      idCounts[id] = (idCounts[id] || 0) + 1;
     });
 
     const duplicates = Object.entries(idCounts).filter(([_, count]) => count > 1).map(([id, _]) => id);
     if (duplicates.length > 0) {
-      console.warn("[useEffect on documents change] DUPLICATE IDs FOUND:", duplicates);
-      console.warn("[useEffect on documents change] Full documents array with duplicates:", 
-        documents.filter(doc => duplicates.includes(doc.id))
-      );
+      console.warn("Duplicate document IDs found:", duplicates);
     }
-  }, [documents]); // This effect runs when 'documents' state changes
+  }, [documents]);
 
   const handleCreateLibrary = () => {
     setIsCreatingLibrary(true);
@@ -177,7 +165,6 @@ export default function LibraryPage() {
   const refreshLibraryDetails = async (libraryId: string) => {
     if (!libraryId) return;
     try {
-      console.log(`Refreshing details for library ID: ${libraryId}`);
       const response = await fetch(`${API_URL}/library/${libraryId}`);
       if (!response.ok) {
         let errorText = `Failed to refresh library details (ID: ${libraryId})`;
@@ -188,7 +175,6 @@ export default function LibraryPage() {
         throw new Error(errorText);
       }
       const detailedLibraryData = await response.json();
-      console.log("Refreshed Detailed Library API raw:", detailedLibraryData);
 
       setCurrentLibrary(detailedLibraryData);
       const fetchedFiles = detailedLibraryData.files?.map((file: any) => ({
@@ -227,15 +213,10 @@ export default function LibraryPage() {
 
   const handleDuplicateLibrary = () => {
     if (currentLibrary) {
-      const duplicateLibraryData = {
-        library_name: `${currentLibrary.library_name} copy`,
-        description: currentLibrary.description,
-      };
-      console.log("Simulating duplicate library for:", currentLibrary.id, "with data:", duplicateLibraryData);
       const newDuplicatedLibrary: Library = {
         id: `local_dup_${Date.now()}`,
-        library_name: duplicateLibraryData.library_name,
-        description: duplicateLibraryData.description,
+        library_name: `${currentLibrary.library_name} copy`,
+        description: currentLibrary.description,
         stats: { ...currentLibrary.stats },
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -293,14 +274,9 @@ export default function LibraryPage() {
 
   const handleRenameLibrary = () => {
     if (currentLibrary && editedLibraryName.trim() !== "") {
-      const updatedLibraryData = {
-        library_name: editedLibraryName.trim(),
-        description: currentLibrary.description,
-      };
-      console.log("Simulating rename library:", currentLibrary.id, "to:", updatedLibraryData.library_name);
       const updatedLibrary = { 
         ...currentLibrary, 
-        library_name: updatedLibraryData.library_name,
+        library_name: editedLibraryName.trim(),
         updated_at: new Date().toISOString()
       };
       setCurrentLibrary(updatedLibrary);
@@ -344,6 +320,7 @@ export default function LibraryPage() {
       alert("Please ensure a library is selected.");
       return;
     }
+    
     if (!validateFile(file)) {
       if (dndFileInputRef.current) dndFileInputRef.current.value = "";
       setFileToUpload(null);
@@ -364,15 +341,25 @@ export default function LibraryPage() {
       });
 
       if (response.ok) {
-        const newFileData = await response.json();
+        let newFileData;
+        try {
+          const responseText = await response.text();
+          newFileData = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error("Error parsing upload response:", parseError);
+          throw new Error(`Failed to parse upload response: ${parseError}`);
+        }
+
         const newDocument: Document = {
-          id: newFileData.id,
+          id: newFileData.file_id,
           file_name: newFileData.file_name,
-          size_bytes: newFileData.size_bytes,
+          size_bytes: newFileData.file_size,
           uploaded_at: newFileData.uploaded_at,
           mime_type: newFileData.mime_type,
         };
+        
         setDocuments((prevDocs) => [...prevDocs, newDocument].filter((file) => file.id != null));
+        
         if (currentLibrary) {
           const updatedStats = {
             file_count: currentLibrary.stats.file_count + 1,
@@ -388,27 +375,34 @@ export default function LibraryPage() {
             prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib)
           );
         }
-        alert("File uploaded successfully!");
+        
         if (currentLibrary) {
           await refreshLibraryDetails(currentLibrary.id);
         }
+        
+        alert("File uploaded successfully!");
       } else {
         let errorMessage = `Upload failed. Status: ${response.status}`;
+        
         try {
-          const errorData = await response.json();
-          if (errorData.detail) {
-             errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+          const responseText = await response.text();
+          const errorDetails = JSON.parse(responseText);
+          
+          if (errorDetails.detail) {
+            errorMessage = typeof errorDetails.detail === 'string' ? errorDetails.detail : JSON.stringify(errorDetails.detail);
+          } else if (errorDetails.error) {
+            errorMessage = errorDetails.error;
           }
         } catch (e) {
-          const textError = await response.text();
-          errorMessage = textError || errorMessage;
+          // Use default error message if response parsing fails
         }
+
+        console.error("Upload failed:", errorMessage);
         alert(`Error: ${errorMessage}`);
-        console.error("Error uploading file:", errorMessage);
       }
     } catch (error) {
-      alert("An unexpected error occurred during upload. See console.");
       console.error("Upload error:", error);
+      alert(`An unexpected error occurred during upload: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsUploading(false);
       setFileToUpload(null);
@@ -449,6 +443,7 @@ export default function LibraryPage() {
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
+    
     if (isUploading) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
