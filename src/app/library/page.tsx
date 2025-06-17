@@ -27,7 +27,7 @@ import {
   DialogTrigger,
   DialogClose
 } from "@/components/ui/dialog";
-import { Trash2 } from 'lucide-react';
+import { Trash2, Eye, Download } from 'lucide-react';
 
 // Define types
 interface Library {
@@ -67,6 +67,9 @@ export default function LibraryPage() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const dndFileInputRef = useRef<HTMLInputElement>(null);
+  const [isRenamingLibrary, setIsRenamingLibrary] = useState(false);
+  const [isDeletingLibrary, setIsDeletingLibrary] = useState(false);
+  const [isDeletingDocuments, setIsDeletingDocuments] = useState(false);
 
   const ALLOWED_FILE_TYPES = [
     "application/pdf", 
@@ -257,33 +260,81 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDeleteSelectedDocuments = () => {
-    setDocuments((prevDocs) =>
-      prevDocs.filter((doc) => !selectedDocuments.includes(doc.id))
-    );
-    if (currentLibrary) {
-        const newFileCount = currentLibrary.stats.file_count - selectedDocuments.length;
-        const updatedStats = { ...currentLibrary.stats, file_count: newFileCount > 0 ? newFileCount : 0 };
-        const updatedLibrary = { ...currentLibrary, stats: updatedStats, updated_at: new Date().toISOString() };
-        setCurrentLibrary(updatedLibrary);
-        setLibraries(prevLibs => prevLibs.map(lib => lib.id === updatedLibrary.id ? updatedLibrary : lib));
+  const handleDeleteSelectedDocuments = async () => {
+    if (!currentLibrary || selectedDocuments.length === 0) return;
+    
+    setIsDeletingDocuments(true);
+    try {
+      // Delete each selected document
+      const deletePromises = selectedDocuments.map(async (documentId) => {
+        const response = await fetch(`${API_URL}/library/${currentLibrary.id}/file/${documentId}`, {
+          method: 'DELETE',
+          headers: {
+            'accept': '*/*',
+          },
+        });
+        
+        if (!response.ok && response.status !== 204) {
+          throw new Error(`Failed to delete file ${documentId}. Status: ${response.status}`);
+        }
+        
+        return documentId;
+      });
+      
+      await Promise.all(deletePromises);
+      
+      // Refresh library details to get updated file list and stats
+      await refreshLibraryDetails(currentLibrary.id);
+      
+      setSelectedDocuments([]);
+      setIsDeleteDialogOpen(false);
+      
+      alert(`Successfully deleted ${selectedDocuments.length} file(s).`);
+    } catch (error) {
+      console.error('Error deleting documents:', error);
+      alert(`An error occurred while deleting files: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsDeletingDocuments(false);
     }
-    setSelectedDocuments([]);
-    setIsDeleteDialogOpen(false);
   };
 
-  const handleRenameLibrary = () => {
+  const handleRenameLibrary = async () => {
     if (currentLibrary && editedLibraryName.trim() !== "") {
-      const updatedLibrary = { 
-        ...currentLibrary, 
+      setIsRenamingLibrary(true);
+      const updatedLibraryData = {
         library_name: editedLibraryName.trim(),
-        updated_at: new Date().toISOString()
+        description: currentLibrary.description,
       };
-      setCurrentLibrary(updatedLibrary);
-      setLibraries(prev => prev.map(lib => 
-        lib.id === updatedLibrary.id ? updatedLibrary : lib
-      ));
-      setIsEditingName(false);
+      try {
+        const response = await fetch(`${API_URL}/library/${currentLibrary.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "accept": "application/json",
+          },
+          body: JSON.stringify(updatedLibraryData),
+        });
+        if (response.ok) {
+          const updatedLibrary = await response.json();
+          setCurrentLibrary(updatedLibrary);
+          setLibraries(prev => prev.map(lib =>
+            lib.id === updatedLibrary.id ? updatedLibrary : lib
+          ));
+          setIsEditingName(false);
+        } else {
+          const errorData = await response.json();
+          let errorMessage = `Failed to update library. Status: ${response.status}`;
+          if (errorData.detail) {
+            errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+          }
+          alert(errorMessage);
+        }
+      } catch (error) {
+        alert("An unexpected error occurred while updating the library. See console for details.");
+        console.error("Error updating library:", error);
+      } finally {
+        setIsRenamingLibrary(false);
+      }
     }
   };
 
@@ -294,12 +345,37 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDeleteLibrary = () => {
+  const handleDeleteLibrary = async () => {
     if (currentLibrary) {
-      setLibraries(prev => prev.filter(lib => lib.id !== currentLibrary.id));
-      setCurrentLibrary(null);
-      setSelectedDocuments([]);
-      setIsDeleteLibraryDialogOpen(false);
+      setIsDeletingLibrary(true);
+      try {
+        const response = await fetch(`${API_URL}/library/${currentLibrary.id}`, {
+          method: 'DELETE',
+          headers: {
+            'accept': '*/*',
+          },
+        });
+        if (response.ok || response.status === 204) {
+          setLibraries(prev => prev.filter(lib => lib.id !== currentLibrary.id));
+          setCurrentLibrary(null);
+          setSelectedDocuments([]);
+          setIsDeleteLibraryDialogOpen(false);
+        } else {
+          let errorMessage = `Failed to delete library. Status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.detail) {
+              errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+            }
+          } catch (e) {}
+          alert(errorMessage);
+        }
+      } catch (error) {
+        alert('An unexpected error occurred while deleting the library. See console for details.');
+        console.error('Error deleting library:', error);
+      } finally {
+        setIsDeletingLibrary(false);
+      }
     }
   };
 
@@ -465,6 +541,44 @@ export default function LibraryPage() {
     }
   };
 
+  const handlePreviewFile = (file: Document) => {
+    if (!currentLibrary) return;
+    
+    // Open PDF preview in new tab
+    const previewUrl = `${API_URL}/library/${currentLibrary.id}/file/${file.id}/preview`;
+    window.open(previewUrl, '_blank');
+  };
+
+  const handleDownloadFile = async (file: Document) => {
+    if (!currentLibrary) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/library/${currentLibrary.id}/file/${file.id}/download`, {
+        method: 'GET',
+        headers: {
+          'accept': '*/*',
+        },
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.file_name;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert('Failed to download file');
+      }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('An error occurred while downloading the file');
+    }
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6 p-4 max-w-6xl mx-auto">
@@ -481,8 +595,6 @@ export default function LibraryPage() {
                     variant="destructive" 
                     onClick={() => setIsDeleteLibraryDialogOpen(true)}
                     className="flex items-center"
-                    disabled
-                    title="Coming soon"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     Delete Library
@@ -491,32 +603,35 @@ export default function LibraryPage() {
                 <div className="mt-2 flex items-center">
                   {isEditingName ? (
                     <div className="flex items-center">
-                      <Input 
+                      <Input
                         value={editedLibraryName}
                         onChange={(e) => setEditedLibraryName(e.target.value)}
                         className="text-2xl font-bold h-auto py-1 mr-2"
                         autoFocus
+                        disabled={isRenamingLibrary}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === 'Enter' && !isRenamingLibrary) {
                             handleRenameLibrary();
-                          } else if (e.key === 'Escape') {
+                          } else if (e.key === 'Escape' && !isRenamingLibrary) {
                             setIsEditingName(false);
                           }
                         }}
                       />
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={handleRenameLibrary}
                         className="h-8 px-2"
+                        disabled={isRenamingLibrary}
                       >
-                        Save
+                        {isRenamingLibrary ? 'Saving...' : 'Save'}
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setIsEditingName(false)}
                         className="h-8 px-2"
+                        disabled={isRenamingLibrary}
                       >
                         Cancel
                       </Button>
@@ -556,8 +671,6 @@ export default function LibraryPage() {
                   variant="outline" 
                   className="mr-2" 
                   onClick={handleDuplicateLibrary}
-                  disabled
-                  title="Coming soon"
                 >
                   Duplicate Library
                 </Button>
@@ -577,8 +690,10 @@ export default function LibraryPage() {
                         </DialogDescription>
                       </DialogHeader>
                       <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-                        <Button variant="destructive" onClick={handleDeleteSelectedDocuments}>Delete</Button>
+                        <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeletingDocuments}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleDeleteSelectedDocuments} disabled={isDeletingDocuments}>
+                          {isDeletingDocuments ? 'Deleting...' : 'Delete'}
+                        </Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
@@ -619,18 +734,19 @@ export default function LibraryPage() {
                     <table className="w-full">
                       <thead className="bg-muted">
                         <tr>
-                            <th className="py-2 px-4 text-left w-10">
-                              <Checkbox
-                                checked={filteredDocuments.length > 0 && 
-                                         filteredDocuments.every(doc => selectedDocuments.includes(doc.id))}
-                                onCheckedChange={toggleSelectAllDocuments}
-                                aria-label="Select all documents"
-                              />
-                            </th>
+                          <th className="py-2 px-4 text-left w-10">
+                            <Checkbox
+                              checked={filteredDocuments.length > 0 && 
+                                       filteredDocuments.every(doc => selectedDocuments.includes(doc.id))}
+                              onCheckedChange={toggleSelectAllDocuments}
+                              aria-label="Select all documents"
+                            />
+                          </th>
                           <th className="text-left py-2 px-4">File Name</th>
                           <th className="text-left py-2 px-4">Size</th>
                           <th className="text-left py-2 px-4">Upload Date</th>
                           <th className="text-left py-2 px-4">Type</th>
+                          <th className="text-left py-2 px-4 w-20">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -647,6 +763,30 @@ export default function LibraryPage() {
                             <td className="py-2 px-4">{(file.size_bytes / (1024*1024)).toFixed(2)} MB</td>
                             <td className="py-2 px-4">{new Date(file.uploaded_at).toLocaleDateString()}</td>
                             <td className="py-2 px-4">{file.mime_type}</td>
+                            <td className="py-2 px-4">
+                              {file.mime_type === 'application/pdf' && (
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handlePreviewFile(file)}
+                                    title="Preview PDF"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handleDownloadFile(file)}
+                                    title="Download PDF"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -769,11 +909,11 @@ export default function LibraryPage() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex justify-between mt-6 gap-4">
-              <Button variant="outline" onClick={() => setIsDeleteLibraryDialogOpen(false)} className="flex-1">
+              <Button variant="outline" onClick={() => setIsDeleteLibraryDialogOpen(false)} className="flex-1" disabled={isDeletingLibrary}>
                 Keep
               </Button>
-              <Button variant="destructive" onClick={handleDeleteLibrary} className="flex-1">
-                Delete
+              <Button variant="destructive" onClick={handleDeleteLibrary} className="flex-1" disabled={isDeletingLibrary}>
+                {isDeletingLibrary ? 'Deleting...' : 'Delete'}
               </Button>
             </DialogFooter>
           </DialogContent>

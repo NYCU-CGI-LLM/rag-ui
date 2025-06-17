@@ -88,6 +88,15 @@ async function handler(req: NextRequest) {
     responseHeaders.delete('content-encoding');
     responseHeaders.delete('content-length');
 
+    // Handle 204 No Content responses
+    if (response.status === 204) {
+      return new NextResponse(null, {
+        status: 204,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    }
+
     let responseData;
     const responseContentType = response.headers.get('content-type') || '';
     
