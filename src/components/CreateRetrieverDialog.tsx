@@ -75,13 +75,32 @@ interface ApiIndexerListResponse {
   indexers: ApiIndexerEntry[];
 }
 
+interface CreateConfigRequest {
+  parser_id: string;
+  chunker_id: string;
+  indexer_id: string;
+  name: string;
+  description?: string;
+  params?: object;
+}
+
+interface CreateConfigResponse {
+  id: string;
+  name: string;
+  description?: string;
+  parser_id: string;
+  chunker_id: string;
+  indexer_id: string;
+  params: object;
+  created_at: string;
+  updated_at: string;
+}
+
 interface CreateRetrieverRequest {
   name: string;
   description?: string;
   library_id: string;
-  parser_id: string;
-  chunker_id: string;
-  indexer_id: string;
+  config_id: string;
   top_k?: number;
   params?: object;
   collection_name?: string;
@@ -415,34 +434,58 @@ export function CreateRetrieverDialog({ open, onOpenChange, onRetrieverCreated }
     try {
       setIsSubmitting(true);
 
-      const requestBody: CreateRetrieverRequest = {
-        name: currentRetrieverName.trim(),
-        description: currentRetrieverDescription.trim() || undefined,
-        library_id: selectedSourceForContext,
+      if (!API_URL) throw new Error('API_URL not configured');
+
+      // Step 1: Create config first
+      const configRequestBody: CreateConfigRequest = {
         parser_id: selectedParser,
         chunker_id: selectedChunker,
         indexer_id: selectedIndexer,
+        name: `${currentRetrieverName.trim()}_config`,
+        description: currentRetrieverDescription.trim() || `Configuration for ${currentRetrieverName.trim()}`,
+        params: {}
+      };
+
+      const configResponse = await fetch(`${API_URL}/config/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(configRequestBody)
+      });
+
+      if (!configResponse.ok) {
+        const errorData = await configResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to create config! status: ${configResponse.status}`);
+      }
+
+      const configResult: CreateConfigResponse = await configResponse.json();
+
+      // Step 2: Create retriever using the config_id
+      const retrieverRequestBody: CreateRetrieverRequest = {
+        name: currentRetrieverName.trim(),
+        description: currentRetrieverDescription.trim() || undefined,
+        library_id: selectedSourceForContext,
+        config_id: configResult.id,
         top_k: 10,
         params: {},
         collection_name: `${currentRetrieverName.trim().replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`
       };
 
-      if (!API_URL) throw new Error('API_URL not configured');
-
-      const response = await fetch(`${API_URL}/retriever/`, {
+      const retrieverResponse = await fetch(`${API_URL}/retriever/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(retrieverRequestBody)
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      if (!retrieverResponse.ok) {
+        const errorData = await retrieverResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to create retriever! status: ${retrieverResponse.status}`);
       }
 
-      const result: CreateRetrieverResponse = await response.json();
+      const result: CreateRetrieverResponse = await retrieverResponse.json();
       
       alert(`Retriever created successfully!\n\nRetriever ID: ${result.retriever_id}\nStatus: ${result.status}\nTotal Chunks: ${result.total_chunks || 'N/A'}`);
       
