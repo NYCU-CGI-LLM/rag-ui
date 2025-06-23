@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { CreateRetrieverDialog } from "@/components/CreateRetrieverDialog";
 
 
 
@@ -446,6 +447,9 @@ export default function ChatPage() {
   const [apiRetrievers, setApiRetrievers] = useState<ApiRetriever[]>([]);
   const [isLoadingRetrievers, setIsLoadingRetrievers] = useState(false);
   const [tempSelectedRetrieverId, setTempSelectedRetrieverId] = useState<string>("");
+
+  // Add state for create retriever dialog
+  const [isCreateRetrieverDialogOpen, setIsCreateRetrieverDialogOpen] = useState(false);
 
   // Initialize generator params when session changes (now from session's generator config)
   useEffect(() => {
@@ -1039,6 +1043,12 @@ export default function ChatPage() {
     }
   };
 
+  // Add callback to handle retriever creation
+  const handleRetrieverCreated = async () => {
+    // Refresh retrievers list after creation
+    await fetchRetrievers();
+  };
+
   return (
     <>
       <PageLayout>
@@ -1593,31 +1603,44 @@ export default function ChatPage() {
                     {isLoadingRetrievers ? (
                       <div className="text-sm text-muted-foreground">Loading retrievers...</div>
                     ) : (
-                      <Select value={tempSelectedRetrieverId} onValueChange={setTempSelectedRetrieverId}>
-                        <SelectTrigger id="new-retriever">
-                          <SelectValue placeholder="Select a retriever configuration">
-                            {tempSelectedRetrieverId ? 
-                              apiRetrievers.find(r => r.id === tempSelectedRetrieverId)?.name || "Unknown Retriever"
-                              : "Select a retriever configuration"
-                            }
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {apiRetrievers.map(retriever => (
-                            <SelectItem key={retriever.id} value={retriever.id}>
-                              <div className="flex flex-col space-y-1 py-1">
-                                <div className="font-medium">{retriever.name}</div>
-                                {retriever.description && (
-                                  <div className="text-xs text-muted-foreground line-clamp-2">{retriever.description}</div>
-                                )}
-                                <div className="text-xs text-muted-foreground">
-                                  {retriever.total_chunks ? `${retriever.total_chunks.toLocaleString()} chunks` : 'No chunks'}
+                      <div className="space-y-2">
+                        <Select value={tempSelectedRetrieverId} onValueChange={setTempSelectedRetrieverId}>
+                          <SelectTrigger id="new-retriever">
+                            <SelectValue placeholder="Select a retriever configuration">
+                              {tempSelectedRetrieverId ? 
+                                apiRetrievers.find(r => r.id === tempSelectedRetrieverId)?.name || "Unknown Retriever"
+                                : "Select a retriever configuration"
+                              }
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {apiRetrievers.map(retriever => (
+                              <SelectItem key={retriever.id} value={retriever.id}>
+                                <div className="flex flex-col space-y-1 py-1">
+                                  <div className="font-medium">{retriever.name}</div>
+                                  {retriever.description && (
+                                    <div className="text-xs text-muted-foreground line-clamp-2">{retriever.description}</div>
+                                  )}
+                                  <div className="text-xs text-muted-foreground">
+                                    {retriever.total_chunks ? `${retriever.total_chunks.toLocaleString()} chunks` : 'No chunks'}
+                                  </div>
                                 </div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full text-xs"
+                          onClick={() => setIsCreateRetrieverDialogOpen(true)}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+                            <path d="M12 5v14M5 12h14"/>
+                          </svg>
+                          Create New Retriever
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1693,6 +1716,13 @@ export default function ChatPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Create Retriever Dialog */}
+          <CreateRetrieverDialog
+            open={isCreateRetrieverDialogOpen}
+            onOpenChange={setIsCreateRetrieverDialogOpen}
+            onRetrieverCreated={handleRetrieverCreated}
+          />
         </div>
       </PageLayout>
     </>
