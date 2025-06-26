@@ -49,6 +49,19 @@ interface ApiEvaluationSummary {
   overall_score: number | null;
 }
 
+interface ApiBenchmarkDataset {
+  id: string;
+  name: string;
+  description: string | null;
+  domain: string | null;
+  language: string;
+  version: string;
+  total_queries: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // API Response Interfaces for Parser Data
 interface ApiParserParameterValue {
   [key: string]: string | number | boolean;
@@ -745,6 +758,76 @@ function EvaluationInterface({
     setIsEvaluating(true);
 
     try {
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      // Find the selected source details
+      const sourceDetails = sources.find(s => s.id === selectedSource);
+      if (!sourceDetails || sourceDetails.type !== 'benchmark') {
+        throw new Error('Only benchmark datasets are supported for evaluation');
+      }
+
+      // Get available metrics to determine categories
+      const availableMetrics = getAvailableMetrics();
+      
+      // Prepare evaluation configuration
+      const evaluationConfig = {
+        embedding_model: "openai_embed_3_large",
+        retrieval_strategy: {
+          metrics: selectedMetrics
+            .filter(metricId => {
+              const metric = availableMetrics.find(m => m.id === metricId);
+              return metric && (metric.category === 'Retrieval' || metric.category === 'Retrieval Token');
+            }),
+          top_k: 10
+        },
+        generation_strategy: {
+          metrics: selectedMetrics
+            .filter(metricId => {
+              const metric = availableMetrics.find(m => m.id === metricId);
+              return metric && metric.category === 'Generation';
+            })
+            .map(metricId => ({ metric_name: metricId }))
+        },
+        generator_config: selectedGenerator ? {
+          model: generatorParams.model || "gpt-4o-mini",
+          temperature: Number(generatorParams.temperature) || 0.7,
+          max_tokens: Number(generatorParams.max_tokens) || 512,
+          batch: Number(generatorParams.batch) || 16
+        } : undefined,
+        prompt_template: "Read the passages and answer the given question.\n\nQuestion: {query}\n\nPassages: {retrieved_contents}\n\nAnswer: "
+      };
+
+      // Create evaluation request
+      const evaluationRequest = {
+        name: `Evaluation - ${sourceDetails.name} vs ${currentRAGRetriever.name}`,
+        benchmark_dataset_id: selectedSource, // This is the benchmark dataset ID
+        evaluation_config: evaluationConfig
+      };
+
+      console.log('Starting evaluation with request:', evaluationRequest);
+
+      const response = await fetch(`${API_URL}/eval/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(evaluationRequest),
+      });
+
+      if (!response.ok) {
+        if (response.status === 422) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`Validation error: ${errorData.message || 'Invalid evaluation configuration'}`);
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const evaluationResponse = await response.json();
+      console.log('Evaluation started:', evaluationResponse);
+
+      // Create local result tracking
       const newResult: EvaluationResults = {
         systemId: selectedRAGRetrieverId,
         sourceId: selectedSource,
@@ -754,35 +837,18 @@ function EvaluationInterface({
       };
 
       setResults((prev) => [...prev, newResult]);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      setResults((prev) =>
-        prev.map((result) => {
-          if (
-            result.systemId === selectedRAGRetrieverId &&
-            result.sourceId === selectedSource &&
-            result.status === "running"
-          ) {
-            const generatedMetrics = selectedMetrics.map((metric) => ({
-              metric,
-              value: Math.random() * 100,
-              unit: metric.toLowerCase().includes("time") ? "ms" : metric.toLowerCase().includes("rate") || metric.toLowerCase().includes("score") ? "%" : "",
-            }));
-
-            return {
-              ...result,
-              status: "completed",
-              endTime: new Date(),
-              metrics: generatedMetrics,
-            };
-          }
-          return result;
-        })
-      );
-
+      // Refresh evaluation results to show the new evaluation
+      await fetchEvaluationResults();
+      
       setActiveTab("results");
     } catch (error) {
       console.error("Evaluation failed:", error);
+      
+      // Show error to user
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setEvaluationsError(`Evaluation failed: ${errorMessage}`);
+      
       setResults((prev) =>
         prev.map((result) => {
           if (
@@ -1488,7 +1554,7 @@ export default function EvalPage() {
   const [retrieversError, setRetrieversError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Fetch libraries from API as sources
+  // Fetch benchmark datasets from API as sources (evaluation only supports benchmarks)
   useEffect(() => {
     const fetchSources = async () => {
       try {
@@ -1496,56 +1562,53 @@ export default function EvalPage() {
         setSourcesError(null);
         if (!API_URL) throw new Error('API_URL not configured');
         
-        const response = await fetch(`${API_URL}/library/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const libraries = await response.json();
+        // Only fetch benchmark datasets since evaluation API requires benchmark_dataset_id
+        // Use explicit parameters to avoid 422 errors
+        const benchmarksResponse = await fetch(`${API_URL}/eval/benchmarks/?skip=0&limit=100&include_inactive=false`);
         
-        // Transform library data to sources format
-        const sourcesFromLibraries: Source[] = libraries.map((lib: any) => ({
-          id: lib.id,
-          name: lib.library_name,
-          description: lib.description || '',
-          type: 'library' as const,
-          supported_metrics: DEFAULT_LIBRARY_METRICS_OBJECTS,
-        }));
+        if (!benchmarksResponse.ok) {
+          const errorText = await benchmarksResponse.text();
+          console.error('Benchmarks API error:', benchmarksResponse.status, errorText);
+          
+          if (benchmarksResponse.status === 422) {
+            throw new Error('Validation error when fetching benchmarks. Please check API configuration.');
+          } else if (benchmarksResponse.status === 500) {
+            throw new Error('Server error: Please ensure the backend API is running and API_SERVER_URL is configured in .env.local');
+          }
+          throw new Error(`Failed to fetch benchmarks: HTTP ${benchmarksResponse.status} - ${errorText}`);
+        }
         
-        // Add some example benchmark sources for demonstration
-        const benchmarkSources: Source[] = [
-          {
-            id: 'benchmark_retrieval_only',
-            name: 'MS MARCO Retrieval',
-            description: 'Microsoft Machine Reading Comprehension - Retrieval evaluation only',
+        const benchmarks: ApiBenchmarkDataset[] = await benchmarksResponse.json();
+        
+        // Transform benchmark datasets to sources format (only active ones)
+        const sourcesFromBenchmarks: Source[] = benchmarks
+          .filter(benchmark => benchmark.is_active)
+          .map((benchmark: ApiBenchmarkDataset) => ({
+            id: benchmark.id,
+            name: benchmark.name,
+            description: benchmark.description || 
+              `${benchmark.domain || 'General'} evaluation dataset (${benchmark.total_queries} queries)`,
             type: 'benchmark' as const,
             supported_metrics: [
+              // All benchmark datasets support both retrieval and generation metrics
               ALL_METRICS.recall,
               ALL_METRICS.precision,
               ALL_METRICS.f1,
               ALL_METRICS.map,
               ALL_METRICS.mrr,
               ALL_METRICS.ndcg,
-            ],
-          },
-          {
-            id: 'benchmark_full_rag',
-            name: 'Natural Questions (Full RAG)',
-            description: 'Natural Questions dataset with retrieval and generation evaluation',
-            type: 'benchmark' as const,
-            supported_metrics: [
-              ALL_METRICS.recall,
-              ALL_METRICS.precision,
-              ALL_METRICS.f1,
               ALL_METRICS.bleu,
               ALL_METRICS.rouge,
+              ALL_METRICS.meteor,
               ALL_METRICS.exact_match,
               ALL_METRICS.answer_f1_score,
             ],
-          },
-        ];
+          }));
         
-        setSources([...sourcesFromLibraries, ...benchmarkSources]);
+        setSources(sourcesFromBenchmarks);
       } catch (error) {
-        console.error('Failed to fetch libraries:', error);
-        setSourcesError(error instanceof Error ? error.message : 'Failed to fetch libraries');
+        console.error('Failed to fetch benchmark sources:', error);
+        setSourcesError(error instanceof Error ? error.message : 'Failed to fetch benchmark sources');
         setSources([]);
       } finally {
         setIsLoadingSources(false);
@@ -1564,7 +1627,15 @@ export default function EvalPage() {
         if (!API_URL) throw new Error('API_URL not configured');
         
         const response = await fetch(`${API_URL}/retriever/`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Retrievers API error:', response.status, errorText);
+          
+          if (response.status === 500) {
+            throw new Error('Server error: Please ensure the backend API is running and API_SERVER_URL is configured in .env.local');
+          }
+          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+        }
         const data: ApiRetrieverListResponse = await response.json();
         
         // Transform API retriever data to RAGRetriever format - only include active retrievers
