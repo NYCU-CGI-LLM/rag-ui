@@ -34,6 +34,13 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { useRouter } from 'next/navigation';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // API Configuration
 const API_URL = "/api";
@@ -650,6 +657,69 @@ const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[]
   });
 };
 
+// Add interface for detailed evaluation results from GET /eval/{eval_id}
+interface ApiEvaluationDetail {
+  created_at: string;
+  updated_at: string;
+  id: string;
+  name: string | null;
+  retriever_config_id: string | null;
+  evaluation_config: {
+    embedding_model: string;
+    generation_strategy?: {
+      metrics: Array<{ metric_name: string }>;
+    };
+    generator_config?: {
+      batch: number;
+      max_tokens: number;
+      model: string;
+      temperature: number;
+    };
+    prompt_template: string;
+    retrieval_strategy: {
+      metrics: string[];
+      top_k: number;
+    };
+  };
+  dataset_config: any;
+  status: 'pending' | 'processing' | 'success' | 'failure' | 'terminated';
+  progress: number | null;
+  message: string | null;
+  total_queries: number | null;
+  processed_queries: number | null;
+  retriever_config_name: string | null;
+  results: Array<{
+    metric_name: string;
+    value: number;
+    description?: string;
+  }>;
+  detailed_results?: {
+    summary: {
+      overall_score: number;
+      total_queries: number;
+      execution_time: number;
+      [key: string]: number; // For dynamic metric scores
+    };
+    detailed_results: {
+      retrieval_metrics?: { [key: string]: number };
+      generation_metrics?: { [key: string]: number };
+      trial_summary?: Array<{
+        node_line_name: string;
+        node_type: string;
+        best_module_filename: string;
+        best_module_name: string;
+        best_module_params: string;
+        best_execution_time: number;
+      }>;
+      trial_directory?: string;
+    };
+    config_used?: string;
+    project_dir?: string;
+    autorag_trial?: string;
+  };
+  execution_time?: number;
+}
+
 function EvaluationInterface({
   ragRetrievers,
   sources,
@@ -674,6 +744,12 @@ function EvaluationInterface({
   const [apiEvaluationResults, setApiEvaluationResults] = useState<ApiEvaluationSummary[]>([]);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
   const [evaluationsError, setEvaluationsError] = useState<string | null>(null);
+  
+  // Detailed evaluation result state
+  const [selectedEvaluationDetail, setSelectedEvaluationDetail] = useState<ApiEvaluationDetail | null>(null);
+  const [isLoadingEvaluationDetail, setIsLoadingEvaluationDetail] = useState(false);
+  const [evaluationDetailError, setEvaluationDetailError] = useState<string | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   
   // Generator selection for evaluation (only OpenAI LLM models)
   const [selectedGenerator, setSelectedGenerator] = useState<string>("gpt-4o-mini");
@@ -775,6 +851,39 @@ function EvaluationInterface({
       setApiEvaluationResults([]);
     } finally {
       setIsLoadingEvaluations(false);
+    }
+  };
+
+  // Fetch detailed evaluation result from API
+  const fetchEvaluationDetail = async (evalId: string) => {
+    try {
+      setIsLoadingEvaluationDetail(true);
+      setEvaluationDetailError(null);
+      
+      console.log('Fetching evaluation detail for ID:', evalId);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/eval/${evalId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const detail: ApiEvaluationDetail = await response.json();
+      console.log('Received evaluation detail:', detail);
+      
+      setSelectedEvaluationDetail(detail);
+      setShowDetailModal(true);
+      
+      console.log('Set showDetailModal to true');
+    } catch (error) {
+      console.error('Failed to fetch evaluation detail:', error);
+      setEvaluationDetailError(error instanceof Error ? error.message : 'Failed to fetch evaluation detail');
+      setSelectedEvaluationDetail(null);
+    } finally {
+      setIsLoadingEvaluationDetail(false);
     }
   };
 
@@ -1638,11 +1747,12 @@ function EvaluationInterface({
                           <TableHead>Progress</TableHead>
                           <TableHead>Overall Score</TableHead>
                           <TableHead>Created At</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {apiEvaluationResults.map((evaluation) => (
-                          <TableRow key={evaluation.id}>
+                          <TableRow key={evaluation.id} className="hover:bg-muted/50">
                             <TableCell className="font-medium">
                               {evaluation.name || "Untitled Evaluation"}
                             </TableCell>
@@ -1698,6 +1808,17 @@ function EvaluationInterface({
                                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
                               })}
                             </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fetchEvaluationDetail(evaluation.id)}
+                                disabled={isLoadingEvaluationDetail}
+                                className="h-8 px-2"
+                              >
+                                {isLoadingEvaluationDetail ? "Loading..." : "View Details"}
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1709,6 +1830,163 @@ function EvaluationInterface({
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* Evaluation Detail Dialog */}
+      <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedEvaluationDetail?.name || "Evaluation Details"}
+            </DialogTitle>
+            <DialogDescription>
+              Complete evaluation configuration and detailed results
+            </DialogDescription>
+          </DialogHeader>
+          
+          {isLoadingEvaluationDetail ? (
+            <div className="text-center py-8">
+              <div className="inline-flex items-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Loading evaluation details...
+              </div>
+            </div>
+          ) : evaluationDetailError ? (
+            <div className="text-center py-8">
+              <div className="text-red-600 mb-2">Failed to load evaluation details</div>
+              <div className="text-sm text-muted-foreground mb-4">{evaluationDetailError}</div>
+              <Button variant="outline" onClick={() => selectedEvaluationDetail?.id && fetchEvaluationDetail(selectedEvaluationDetail.id)}>
+                Retry
+              </Button>
+            </div>
+          ) : selectedEvaluationDetail ? (
+            <div className="space-y-6">
+              {/* Evaluation Overview */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium">Overview</h3>
+                  <div className="space-y-1 text-sm">
+                    <p><span className="font-medium">Status:</span> 
+                      <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        selectedEvaluationDetail.status === "success"
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                          : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                      }`}>
+                        {selectedEvaluationDetail.status.charAt(0).toUpperCase() + selectedEvaluationDetail.status.slice(1)}
+                      </span>
+                    </p>
+                    <p><span className="font-medium">Progress:</span> {selectedEvaluationDetail.progress?.toFixed(1) || 'N/A'}%</p>
+                    <p><span className="font-medium">Total Queries:</span> {selectedEvaluationDetail.total_queries || 'N/A'}</p>
+                    <p><span className="font-medium">Processed:</span> {selectedEvaluationDetail.processed_queries || 'N/A'}</p>
+                    <p><span className="font-medium">Execution Time:</span> {selectedEvaluationDetail.execution_time ? `${selectedEvaluationDetail.execution_time.toFixed(2)}s` : 'N/A'}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium">Configuration Used</h3>
+                  <div className="space-y-1 text-sm">
+                    <p><span className="font-medium">Embedding Model:</span> {selectedEvaluationDetail.evaluation_config.embedding_model}</p>
+                    <p><span className="font-medium">Retrieval Top K:</span> {selectedEvaluationDetail.evaluation_config.retrieval_strategy.top_k}</p>
+                    {selectedEvaluationDetail.evaluation_config.generator_config && (
+                      <>
+                        <p><span className="font-medium">Generator Model:</span> {selectedEvaluationDetail.evaluation_config.generator_config.model}</p>
+                        <p><span className="font-medium">Temperature:</span> {selectedEvaluationDetail.evaluation_config.generator_config.temperature}</p>
+                        <p><span className="font-medium">Max Tokens:</span> {selectedEvaluationDetail.evaluation_config.generator_config.max_tokens}</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Results */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium">Evaluation Results</h3>
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Metric</TableHead>
+                        <TableHead>Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedEvaluationDetail.results.map((result) => (
+                        <TableRow key={result.metric_name}>
+                          <TableCell className="font-medium">{result.metric_name}</TableCell>
+                          <TableCell className="font-mono">{result.value.toFixed(6)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+              
+              {/* Detailed Results (if available) */}
+              {selectedEvaluationDetail.detailed_results && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Detailed Analysis</h3>
+                  
+                  {/* Summary */}
+                  {selectedEvaluationDetail.detailed_results.summary && (
+                    <div className="p-4 border rounded-md bg-muted/20">
+                      <h4 className="font-medium mb-2">Summary</h4>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Overall Score:</span>
+                          <p className="font-mono font-medium">{selectedEvaluationDetail.detailed_results.summary.overall_score.toFixed(6)}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Total Queries:</span>
+                          <p className="font-mono font-medium">{selectedEvaluationDetail.detailed_results.summary.total_queries}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Execution Time:</span>
+                          <p className="font-mono font-medium">{(selectedEvaluationDetail.execution_time || selectedEvaluationDetail.detailed_results.summary.execution_time || 0).toFixed(2)}s</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Breakdown by Category */}
+                  {selectedEvaluationDetail.detailed_results.detailed_results && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedEvaluationDetail.detailed_results.detailed_results.retrieval_metrics && (
+                        <div className="p-4 border rounded-md">
+                          <h4 className="font-medium mb-2">Retrieval Metrics</h4>
+                          <div className="space-y-1 text-sm">
+                            {Object.entries(selectedEvaluationDetail.detailed_results.detailed_results.retrieval_metrics).map(([key, value]) => (
+                              <div key={key} className="flex justify-between">
+                                <span className="text-muted-foreground">{key}:</span>
+                                <span className="font-mono">{typeof value === 'number' ? value.toFixed(6) : value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {selectedEvaluationDetail.detailed_results.detailed_results.generation_metrics && (
+                        <div className="p-4 border rounded-md">
+                          <h4 className="font-medium mb-2">Generation Metrics</h4>
+                          <div className="space-y-1 text-sm">
+                            {Object.entries(selectedEvaluationDetail.detailed_results.detailed_results.generation_metrics).map(([key, value]) => (
+                              <div key={key} className="flex justify-between">
+                                <span className="text-muted-foreground">{key}:</span>
+                                <span className="font-mono">{typeof value === 'number' ? value.toFixed(6) : value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
