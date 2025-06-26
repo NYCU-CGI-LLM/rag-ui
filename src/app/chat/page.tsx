@@ -692,33 +692,62 @@ export default function ChatPage() {
   };
 
   // Delete a chat session
-  const deleteSession = (sessionId: string) => {
-    setChatSessions(prev => prev.filter(session => session.id !== sessionId));
-    
-    // If we're deleting the currently selected session, switch to the first available session
-    if (selectedSessionId === sessionId) {
-      const remainingSessions = chatSessions.filter(session => session.id !== sessionId);
-      if (remainingSessions.length > 0) {
-        loadExistingSession(remainingSessions[0].id);
-      } else {
-        // No sessions left, create a default state
-        setSelectedSessionId("");
-        setMessages([{
-          id: "initial-ai-message-empty",
-          isUser: false,
-          content: "Hello! How can I help you today?",
-          timestamp: new Date().toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          }),
-        }]);
+  const deleteSession = async (sessionId: string) => {
+    try {
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
       }
+
+             const response = await fetch(`${API_URL}/chat/${sessionId}`, {
+         method: 'DELETE',
+       });
+
+      if (!response.ok) {
+        if (response.status === 422) {
+          const errorData = await response.json();
+          throw new Error(`Validation error: ${errorData.detail?.[0]?.msg || 'Invalid request'}`);
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // API call successful (204 No Content), now update local state
+      setChatSessions(prev => prev.filter(session => session.id !== sessionId));
+      
+      // If we're deleting the currently selected session, switch to the first available session
+      if (selectedSessionId === sessionId) {
+        const remainingSessions = chatSessions.filter(session => session.id !== sessionId);
+        if (remainingSessions.length > 0) {
+          loadExistingSession(remainingSessions[0].id);
+        } else {
+          // No sessions left, create a default state
+          setSelectedSessionId("");
+          setMessages([{
+            id: "initial-ai-message-empty",
+            isUser: false,
+            content: "Hello! How can I help you today?",
+            timestamp: new Date().toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            }),
+          }]);
+        }
+      }
+      
+      // Close delete dialog
+      setIsDeleteDialogOpen(false);
+      setDeleteSessionId(null);
+
+      console.log('Successfully deleted chat session:', sessionId);
+    } catch (error) {
+      console.error('Failed to delete chat session:', error);
+      
+      // Close delete dialog even on error (so user isn't stuck)
+      setIsDeleteDialogOpen(false);
+      setDeleteSessionId(null);
+      
+      // TODO: Consider adding a toast notification or error state
     }
-    
-    // Close delete dialog
-    setIsDeleteDialogOpen(false);
-    setDeleteSessionId(null);
   };
 
   // Handle delete session confirmation
