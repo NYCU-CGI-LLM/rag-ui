@@ -38,6 +38,17 @@ import { useRouter } from 'next/navigation';
 // API Configuration
 const API_URL = "/api";
 
+// API Response Interfaces for Evaluation Data
+interface ApiEvaluationSummary {
+  id: string;
+  name: string | null;
+  status: 'success' | 'failure';
+  progress: number | null;
+  created_at: string;
+  retriever_config_name: string | null;
+  overall_score: number | null;
+}
+
 // API Response Interfaces for Parser Data
 interface ApiParserParameterValue {
   [key: string]: string | number | boolean;
@@ -645,6 +656,11 @@ function EvaluationInterface({
   const [results, setResults] = useState<EvaluationResults[]>([]);
   const [activeTab, setActiveTab] = useState("run");
   
+  // API evaluation results state
+  const [apiEvaluationResults, setApiEvaluationResults] = useState<ApiEvaluationSummary[]>([]);
+  const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
+  const [evaluationsError, setEvaluationsError] = useState<string | null>(null);
+  
   // Generator selection for evaluation (moved from RAG config)
   const [selectedGenerator, setSelectedGenerator] = useState<string>("");
   const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({});
@@ -667,6 +683,32 @@ function EvaluationInterface({
   const currentRAGRetriever = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
 
+  // Fetch evaluation results from API
+  const fetchEvaluationResults = async () => {
+    try {
+      setIsLoadingEvaluations(true);
+      setEvaluationsError(null);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/eval/`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const evaluations: ApiEvaluationSummary[] = await response.json();
+      setApiEvaluationResults(evaluations);
+    } catch (error) {
+      console.error('Failed to fetch evaluation results:', error);
+      setEvaluationsError(error instanceof Error ? error.message : 'Failed to fetch evaluation results');
+      setApiEvaluationResults([]);
+    } finally {
+      setIsLoadingEvaluations(false);
+    }
+  };
+
   useEffect(() => {
     const availableMetrics = getAvailableMetrics();
     setDisplayableMetrics(availableMetrics);
@@ -678,6 +720,13 @@ function EvaluationInterface({
       setGeneratorParams({});
     }
   }, [selectedSource, selectedRAGRetrieverId, sources, ragRetrievers]);
+
+  // Fetch evaluation results when switching to results tab
+  useEffect(() => {
+    if (activeTab === "results") {
+      fetchEvaluationResults();
+    }
+  }, [activeTab]);
 
   const handleMetricSelection = (metricId: string) => {
     setSelectedMetrics(prev => 
@@ -1305,77 +1354,125 @@ function EvaluationInterface({
         </TabsContent>
 
         <TabsContent value="results" className="pt-4">
-           {results.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No evaluation results yet. Run an evaluation from the 'Run Evaluation' tab.</p>
-            </div>
-          ) : (
-            <div className="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Retriever</TableHead> 
-                    <TableHead>Source</TableHead>
-                    <TableHead>Start Time</TableHead>
-                    <TableHead>End Time</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Results (Selected Metrics)</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {results.map((result, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{getRAGRetrieverName(result.systemId)}</TableCell> 
-                      <TableCell>{getSourceName(result.sourceId)}</TableCell>
-                      <TableCell>
-                        {result.startTime.toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        {result.endTime ? result.endTime.toLocaleString() : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            result.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : result.status === "running"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {result.status}
-                        </span>
-                        {getDurationDisplay(result) && (
-                          <p className="text-xs text-muted-foreground mt-0.5 pl-1">
-                            {getDurationDisplay(result)}
-                          </p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {result.status === "completed" ? (
-                          <div className="space-y-1">
-                            {result.metrics.map((metric, i) => (
-                              <div key={i} className="flex justify-between items-center text-xs">
-                                <span>{ALL_METRICS[metric.metric]?.name || metric.metric}:</span>
+          <Card>
+            <CardHeader>
+              <CardTitle>Evaluation Results</CardTitle>
+              <CardDescription>View and monitor evaluation runs from the API.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingEvaluations ? (
+                <div className="text-center py-8">
+                  <div className="inline-flex items-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Loading evaluation results...
+                  </div>
+                </div>
+              ) : evaluationsError ? (
+                <div className="text-center py-8">
+                  <div className="text-red-600 mb-2">Failed to load evaluation results</div>
+                  <div className="text-sm text-muted-foreground mb-4">{evaluationsError}</div>
+                  <Button variant="outline" onClick={fetchEvaluationResults}>
+                    Retry
+                  </Button>
+                </div>
+              ) : apiEvaluationResults.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No evaluation results found.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Run an evaluation from the 'Run Evaluation' tab to see results here.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {apiEvaluationResults.length} evaluation run{apiEvaluationResults.length === 1 ? '' : 's'}
+                    </p>
+                    <Button variant="outline" size="sm" onClick={fetchEvaluationResults}>
+                      Refresh
+                    </Button>
+                  </div>
+                  
+                  <div className="border rounded-md">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Retriever Config</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Progress</TableHead>
+                          <TableHead>Overall Score</TableHead>
+                          <TableHead>Created At</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {apiEvaluationResults.map((evaluation) => (
+                          <TableRow key={evaluation.id}>
+                            <TableCell className="font-medium">
+                              {evaluation.name || "Untitled Evaluation"}
+                            </TableCell>
+                            <TableCell>
+                              {evaluation.retriever_config_name || "Unknown"}
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  evaluation.status === "success"
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                    : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                }`}
+                              >
+                                {evaluation.status.charAt(0).toUpperCase() + evaluation.status.slice(1)}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {evaluation.progress !== null ? (
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div 
+                                      className={`h-2 rounded-full ${
+                                        evaluation.status === "success" ? "bg-green-600" : "bg-red-600"
+                                      }`}
+                                      style={{ width: `${evaluation.progress}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-muted-foreground min-w-[3rem]">
+                                    {evaluation.progress.toFixed(1)}%
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">N/A</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {evaluation.overall_score !== null ? (
                                 <span className="font-medium">
-                                  {metric.value.toFixed(2)}
-                                  {metric.unit}
+                                  {evaluation.overall_score.toFixed(4)}
                                 </span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : result.status === "running" ? (
-                          "Processing..."
-                        ) : (
-                          "Failed"
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+                              ) : (
+                                <span className="text-xs text-muted-foreground">N/A</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {new Date(evaluation.created_at).toLocaleString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                              })}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
