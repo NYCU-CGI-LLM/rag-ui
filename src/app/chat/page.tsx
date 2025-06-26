@@ -692,33 +692,62 @@ export default function ChatPage() {
   };
 
   // Delete a chat session
-  const deleteSession = (sessionId: string) => {
-    setChatSessions(prev => prev.filter(session => session.id !== sessionId));
-    
-    // If we're deleting the currently selected session, switch to the first available session
-    if (selectedSessionId === sessionId) {
-      const remainingSessions = chatSessions.filter(session => session.id !== sessionId);
-      if (remainingSessions.length > 0) {
-        loadExistingSession(remainingSessions[0].id);
-      } else {
-        // No sessions left, create a default state
-        setSelectedSessionId("");
-        setMessages([{
-          id: "initial-ai-message-empty",
-          isUser: false,
-          content: "Hello! How can I help you today?",
-          timestamp: new Date().toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit',
-            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          }),
-        }]);
+  const deleteSession = async (sessionId: string) => {
+    try {
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
       }
+
+             const response = await fetch(`${API_URL}/chat/${sessionId}`, {
+         method: 'DELETE',
+       });
+
+      if (!response.ok) {
+        if (response.status === 422) {
+          const errorData = await response.json();
+          throw new Error(`Validation error: ${errorData.detail?.[0]?.msg || 'Invalid request'}`);
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // API call successful (204 No Content), now update local state
+      setChatSessions(prev => prev.filter(session => session.id !== sessionId));
+      
+      // If we're deleting the currently selected session, switch to the first available session
+      if (selectedSessionId === sessionId) {
+        const remainingSessions = chatSessions.filter(session => session.id !== sessionId);
+        if (remainingSessions.length > 0) {
+          loadExistingSession(remainingSessions[0].id);
+        } else {
+          // No sessions left, create a default state
+          setSelectedSessionId("");
+          setMessages([{
+            id: "initial-ai-message-empty",
+            isUser: false,
+            content: "Hello! How can I help you today?",
+            timestamp: new Date().toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            }),
+          }]);
+        }
+      }
+      
+      // Close delete dialog
+      setIsDeleteDialogOpen(false);
+      setDeleteSessionId(null);
+
+      console.log('Successfully deleted chat session:', sessionId);
+    } catch (error) {
+      console.error('Failed to delete chat session:', error);
+      
+      // Close delete dialog even on error (so user isn't stuck)
+      setIsDeleteDialogOpen(false);
+      setDeleteSessionId(null);
+      
+      // TODO: Consider adding a toast notification or error state
     }
-    
-    // Close delete dialog
-    setIsDeleteDialogOpen(false);
-    setDeleteSessionId(null);
   };
 
   // Handle delete session confirmation
@@ -791,37 +820,57 @@ export default function ChatPage() {
   };
 
   // Create a copy from an existing session
-  const createCopyFromExistingSession = (sessionId: string) => {
+  const createCopyFromExistingSession = async (sessionId: string) => {
     const session = chatSessions.find(s => s.id === sessionId);
     
-    if (session) {
-      // Generate new session ID and timestamp
-      const newSessionId = `session-${Date.now()}`;
-      const timestamp = new Date().toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      });
+    if (!session) {
+      console.error('Session not found:', sessionId);
+      return;
+    }
 
-      // Create new session object with "copy" suffix, copying all original configs
-      const newSession: ChatSession = {
-        id: newSessionId,
+    try {
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      // First, get the detailed session info to retrieve the retriever_id
+      const sessionDetailResponse = await fetch(`${API_URL}/chat/${sessionId}`);
+      if (!sessionDetailResponse.ok) {
+        throw new Error(`Failed to fetch session details: ${sessionDetailResponse.status}`);
+      }
+
+      const sessionDetail: ApiChatDetail = await sessionDetailResponse.json();
+
+      // Prepare API payload for creating a copy
+      const apiPayload = {
         name: `${session.name} copy`,
-        timestamp: timestamp,
-        generatorConfig: { 
-          moduleId: session.generatorConfig.moduleId, 
-          parameterValues: { ...session.generatorConfig.parameterValues } 
-        },
+        retriever_id: sessionDetail.retriever_id,
+        metadata: sessionDetail.metadata || {},
+        llm_model: sessionDetail.config.llm_model || "gpt-4o-mini",
+        temperature: sessionDetail.config.temperature || 0.7,
+        top_p: sessionDetail.config.top_p || 1.0,
+        top_k: 5  // Default top_k value
       };
 
-      // Add to sessions list
-      setChatSessions(prev => [newSession, ...prev]);
+      const response = await fetch(`${API_URL}/chat/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(apiPayload),
+      });
 
-      // Set selected session
-      setSelectedSessionId(newSessionId);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const newChat = await response.json();
+
+      // Refresh chat sessions list to include the new chat
+      await fetchChatSessions();
+
+      // Set the new chat as selected
+      setSelectedSessionId(newChat.id);
       
       // Reset chat messages to initial greeting
       setMessages([{
@@ -838,6 +887,16 @@ export default function ChatPage() {
       // Close dialog
       setIsExistingSessionDialogOpen(false);
       setIsNewChatPopoverOpen(false);
+
+      console.log('Successfully created copy of chat session:', newChat);
+    } catch (error) {
+      console.error('Failed to create copy of chat session:', error);
+      
+      // Close dialog even on error (so user isn't stuck)
+      setIsExistingSessionDialogOpen(false);
+      setIsNewChatPopoverOpen(false);
+
+      // TODO: Consider adding a toast notification or error state
     }
   };
 
