@@ -526,17 +526,17 @@ export function CreateRetrieverDialog({ open, onOpenChange, onRetrieverCreated }
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="retriever-description">Description (Optional)</Label>
+              <Label htmlFor="retriever-description">Description</Label>
               <Input 
                 id="retriever-description" 
                 value={currentRetrieverDescription} 
                 onChange={(e) => setCurrentRetrieverDescription(e.target.value)} 
-                placeholder="A brief description of this retriever" 
+                placeholder="A brief description of this retriever (Optional)" 
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="source-select">Select Library (Required)</Label>
+              <Label htmlFor="source-select">Select Library</Label>
               <Select value={selectedSourceForContext} onValueChange={setSelectedSourceForContext}>
                 <SelectTrigger id="source-select">
                   <SelectValue placeholder="Select a library" />
