@@ -1366,7 +1366,7 @@ function EvaluationInterface({
           <Card>
             <CardHeader>
                 <CardTitle>Run Evaluation</CardTitle>
-                <CardDescription>Select a retriever, generator, and data source to start an evaluation run.</CardDescription>
+                <CardDescription>Select a data source, embedding model, top k, and generator to start an evaluation run.</CardDescription>
             </CardHeader>
             <CardContent className="pt-6">
               <div className="space-y-6">
@@ -1441,7 +1441,7 @@ function EvaluationInterface({
                     max={100}
                     placeholder="10"
                   />
-                  <p className="text-xs text-muted-foreground">Number of documents to retrieve for evaluation</p>
+                  <p className="text-xs text-muted-foreground">Number of chunks to retrieve for evaluation</p>
                 </div>
 
                 {/* Generator section - only show if the selected source requires generation */}
@@ -1679,18 +1679,6 @@ function EvaluationInterface({
                 >
                   {isEvaluating ? "Evaluating..." : "Start Evaluation & View Results"}
                 </Button>
-                
-                {/* Show helpful hints when required fields are missing */}
-                {(!selectedSource || selectedMetrics.length === 0 || (isGeneratorRequired() && !selectedGenerator)) && !isEvaluating && (
-                  <div className="text-sm text-muted-foreground mt-3 p-3 bg-muted rounded-md">
-                    <p className="font-medium mb-2">Complete these steps to start evaluation:</p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      {!selectedSource && <li>Select a benchmark dataset from the available options</li>}
-                      {selectedMetrics.length === 0 && <li>Select at least one evaluation metric to measure performance</li>}
-                      {isGeneratorRequired() && !selectedGenerator && <li>Select a generator (required for generation metrics like BLEU, ROUGE)</li>}
-                    </ul>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
