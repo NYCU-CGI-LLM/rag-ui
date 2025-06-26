@@ -116,6 +116,14 @@ interface ApiIndexerListResponse {
   indexers: ApiIndexerEntry[];
 }
 
+// Add interface for embedding model options
+interface EmbeddingModel {
+  id: string;
+  name: string;
+  model: string;
+  description?: string;
+}
+
 // API Response Interfaces for Retriever Data
 interface ApiRetrieverEntry {
   id: string;
@@ -216,16 +224,16 @@ interface EvaluationResults {
 
 const ALL_METRICS: { [key: string]: Metric } = {
   // Retrieval Metrics
-  recall: { id: "recall", name: "Recall", category: "Retrieval" as const },
-  precision: { id: "precision", name: "Precision", category: "Retrieval" as const },
-  f1: { id: "f1", name: "F1", category: "Retrieval" as const },
-  map: { id: "map", name: "mAP", category: "Retrieval" as const },
-  mrr: { id: "mrr", name: "mRR", category: "Retrieval" as const },
-  ndcg: { id: "ndcg", name: "NDCG", category: "Retrieval" as const },
+  retrieval_recall: { id: "retrieval_recall", name: "Recall", category: "Retrieval" as const },
+  retrieval_precision: { id: "retrieval_precision", name: "Precision", category: "Retrieval" as const },
+  retrieval_f1: { id: "retrieval_f1", name: "F1", category: "Retrieval" as const },
+  retrieval_map: { id: "retrieval_map", name: "mAP", category: "Retrieval" as const },
+  retrieval_mrr: { id: "retrieval_mrr", name: "mRR", category: "Retrieval" as const },
+  retrieval_ndcg: { id: "retrieval_ndcg", name: "NDCG", category: "Retrieval" as const },
   // Retrieval Token Metrics
-  token_recall: { id: "token_recall", name: "Token Recall", category: "Retrieval Token" as const },
-  token_precision: { id: "token_precision", name: "Token Precision", category: "Retrieval Token" as const },
-  token_f1: { id: "token_f1", name: "Token F1", category: "Retrieval Token" as const },
+  retrieval_token_recall: { id: "retrieval_token_recall", name: "Token Recall", category: "Retrieval Token" as const },
+  retrieval_token_precision: { id: "retrieval_token_precision", name: "Token Precision", category: "Retrieval Token" as const },
+  retrieval_token_f1: { id: "retrieval_token_f1", name: "Token F1", category: "Retrieval Token" as const },
   // Generation Metrics
   bleu: { id: "bleu", name: "BLEU", category: "Generation" as const },
   rouge: { id: "rouge", name: "ROUGE", category: "Generation" as const },
@@ -248,9 +256,9 @@ const ALL_METRICS: { [key: string]: Metric } = {
 };
 
 const DEFAULT_LIBRARY_METRICS_OBJECTS: Metric[] = [
-  ALL_METRICS.recall, 
-  ALL_METRICS.precision, 
-  ALL_METRICS.f1,
+  ALL_METRICS.retrieval_recall, 
+  ALL_METRICS.retrieval_precision, 
+  ALL_METRICS.retrieval_f1,
 ];
 
 // OpenAI model token limits
@@ -289,6 +297,17 @@ const MAX_TOKEN_DICT: { [key: string]: number } = {
   "gpt-3.5-turbo-16k-0613": 16_385,
 };
 
+// OpenAI LLM models for evaluation - simplified list of most commonly used models
+const OPENAI_LLM_MODELS = [
+  { id: "gpt-4o", name: "GPT-4o", description: "Most advanced multimodal model" },
+  { id: "gpt-4o-mini", name: "GPT-4o Mini", description: "Efficient and cost-effective model" },
+  { id: "gpt-4-turbo", name: "GPT-4 Turbo", description: "Enhanced GPT-4 with larger context" },
+  { id: "gpt-4", name: "GPT-4", description: "High-quality language model" },
+  { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", description: "Fast and efficient model" },
+  { id: "o1-preview", name: "o1 Preview", description: "Advanced reasoning model" },
+  { id: "o1-mini", name: "o1 Mini", description: "Reasoning model, smaller version" }
+];
+
 // Generator modules (based on chat page design)
 const GENERATOR_MODULES: Module[] = [
   {
@@ -302,40 +321,7 @@ const GENERATOR_MODULES: Module[] = [
         name: "LLM Model", 
         type: "select", 
         defaultValue: "gpt-4o-mini", 
-        options: [
-          "gpt-4.5-preview",
-          "gpt-4.5-preview-2025-02-27",
-          "o1",
-          "o1-preview",
-          "o1-preview-2024-09-12",
-          "o1-mini",
-          "o1-mini-2024-09-12",
-          "o3-mini",
-          "gpt-4o-mini",
-          "gpt-4o-mini-2024-07-18",
-          "gpt-4o",
-          "gpt-4o-2024-08-06",
-          "gpt-4o-2024-05-13",
-          "chatgpt-4o-latest",
-          "gpt-4-turbo",
-          "gpt-4-turbo-2024-04-09",
-          "gpt-4-turbo-preview",
-          "gpt-4-0125-preview",
-          "gpt-4-1106-preview",
-          "gpt-4-vision-preview",
-          "gpt-4-1106-vision-preview",
-          "gpt-4",
-          "gpt-4-0613",
-          "gpt-4-32k",
-          "gpt-4-32k-0613",
-          "gpt-3.5-turbo-0125",
-          "gpt-3.5-turbo",
-          "gpt-3.5-turbo-1106",
-          "gpt-3.5-turbo-instruct",
-          "gpt-3.5-turbo-16k",
-          "gpt-3.5-turbo-0613",
-          "gpt-3.5-turbo-16k-0613"
-        ],
+        options: OPENAI_LLM_MODELS.map(model => model.id),
         description: "OpenAI model to use for generation."
       },
       { 
@@ -367,6 +353,16 @@ const GENERATOR_MODULES: Module[] = [
         max: 1.0, 
         step: 0.01,
         description: "Controls diversity via nucleus sampling."
+      },
+      { 
+        id: "batch", 
+        name: "Batch Size", 
+        type: "number", 
+        defaultValue: 16, 
+        min: 1, 
+        max: 128, 
+        step: 1,
+        description: "Number of requests to process in parallel."
       }
     ]
   },
@@ -661,40 +657,100 @@ function EvaluationInterface({
   ragRetrievers: RAGRetriever[];
   sources: Source[];
 }) {
-  const [selectedRAGRetrieverId, setSelectedRAGRetrieverId] = useState<string>("");
+  // Remove retriever selection - not needed anymore
   const [selectedSource, setSelectedSource] = useState<string>("");
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
   const [displayableMetrics, setDisplayableMetrics] = useState<Metric[]>([]);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [results, setResults] = useState<EvaluationResults[]>([]);
   const [activeTab, setActiveTab] = useState("run");
+  const [evaluationName, setEvaluationName] = useState<string>("");
+  
+  // Evaluation configuration state
+  const [embeddingModel, setEmbeddingModel] = useState<string>("openai_embed_3_large");
+  const [retrievalTopK, setRetrievalTopK] = useState<number>(10);
   
   // API evaluation results state
   const [apiEvaluationResults, setApiEvaluationResults] = useState<ApiEvaluationSummary[]>([]);
   const [isLoadingEvaluations, setIsLoadingEvaluations] = useState(false);
   const [evaluationsError, setEvaluationsError] = useState<string | null>(null);
   
-  // Generator selection for evaluation (moved from RAG config)
-  const [selectedGenerator, setSelectedGenerator] = useState<string>("");
-  const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({});
+  // Generator selection for evaluation (only OpenAI LLM models)
+  const [selectedGenerator, setSelectedGenerator] = useState<string>("gpt-4o-mini");
+  const [generatorParams, setGeneratorParams] = useState<{ [key: string]: string | number | boolean }>({
+    model: "gpt-4o-mini",
+    temperature: 0.7,
+    max_tokens: 512,
+    batch: 16
+  });
 
-  // API-fetched parsers state
+  // Embedding models state - fetch from API
+  const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
+  const [isLoadingEmbeddingModels, setIsLoadingEmbeddingModels] = useState(true);
+  const [embeddingModelsError, setEmbeddingModelsError] = useState<string | null>(null);
+
+  // API-fetched parsers state - not needed anymore for evaluation
   const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
   const [apiParsersLoading, setApiParsersLoading] = useState(true);
   const [apiParsersError, setApiParsersError] = useState<string | null>(null);
 
-  // API-fetched chunkers state
+  // API-fetched chunkers state - not needed anymore for evaluation
   const [apiFetchedChunkers, setApiFetchedChunkers] = useState<Module[]>([]);
   const [apiChunkersLoading, setApiChunkersLoading] = useState(true);
   const [apiChunkersError, setApiChunkersError] = useState<string | null>(null);
 
-  // API-fetched indexers state
+  // API-fetched indexers state - not needed anymore for evaluation
   const [apiFetchedIndexers, setApiFetchedIndexers] = useState<Module[]>([]);
   const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
   const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
 
-  const currentRAGRetriever = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
+
+  // Fetch embedding models from indexer API
+  useEffect(() => {
+    const fetchEmbeddingModels = async () => {
+      try {
+        setIsLoadingEmbeddingModels(true);
+        setEmbeddingModelsError(null);
+        
+        if (!API_URL) {
+          throw new Error('API_URL not configured');
+        }
+
+        const response = await fetch(`${API_URL}/indexer/?limit=50`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data: ApiIndexerListResponse = await response.json();
+        
+        // Transform indexer data to embedding models (only vector indexers)
+        const models: EmbeddingModel[] = data.indexers
+          .filter(indexer => indexer.status === 'active' && indexer.index_type === 'vector')
+          .map(indexer => ({
+            id: indexer.id,
+            name: indexer.name,
+            model: indexer.model,
+            description: `${indexer.model} (${indexer.name})`
+          }));
+        
+        setEmbeddingModels(models);
+        
+        // Set default embedding model if available
+        if (models.length > 0 && !embeddingModel) {
+          setEmbeddingModel(models[0].model);
+        }
+      } catch (error) {
+        console.error('Failed to fetch embedding models:', error);
+        setEmbeddingModelsError(error instanceof Error ? error.message : 'Failed to fetch embedding models');
+        setEmbeddingModels([]);
+      } finally {
+        setIsLoadingEmbeddingModels(false);
+      }
+    };
+
+    fetchEmbeddingModels();
+  }, []);
 
   // Fetch evaluation results from API
   const fetchEvaluationResults = async () => {
@@ -725,14 +781,29 @@ function EvaluationInterface({
   useEffect(() => {
     const availableMetrics = getAvailableMetrics();
     setDisplayableMetrics(availableMetrics);
-    setSelectedMetrics([]);
+    
+    // Auto-select some default metrics when available metrics change
+    if (availableMetrics.length > 0) {
+      const defaultMetrics = [];
+      // Auto-select retrieval metrics
+      if (availableMetrics.find(m => m.id === 'retrieval_recall')) defaultMetrics.push('retrieval_recall');
+      if (availableMetrics.find(m => m.id === 'retrieval_precision')) defaultMetrics.push('retrieval_precision');
+      if (availableMetrics.find(m => m.id === 'retrieval_f1')) defaultMetrics.push('retrieval_f1');
+      // Auto-select generation metrics if available
+      if (availableMetrics.find(m => m.id === 'bleu')) defaultMetrics.push('bleu');
+      if (availableMetrics.find(m => m.id === 'rouge')) defaultMetrics.push('rouge');
+      
+      setSelectedMetrics(defaultMetrics);
+    } else {
+      setSelectedMetrics([]);
+    }
     
     // Clear generator selection if not required
     if (!isGeneratorRequired() && selectedGenerator) {
       setSelectedGenerator("");
       setGeneratorParams({});
     }
-  }, [selectedSource, selectedRAGRetrieverId, sources, ragRetrievers]);
+  }, [selectedSource, sources]); // Remove selectedRAGRetrieverId and ragRetrievers dependencies
 
   // Fetch evaluation results when switching to results tab
   useEffect(() => {
@@ -750,7 +821,7 @@ function EvaluationInterface({
   };
 
   const startEvaluation = async () => {
-    if (!selectedRAGRetrieverId || !selectedSource || !currentRAGRetriever || selectedMetrics.length === 0) return;
+    if (!selectedSource || selectedMetrics.length === 0) return;
     
     // Check if generator is required and selected
     if (isGeneratorRequired() && !selectedGenerator) return;
@@ -770,28 +841,31 @@ function EvaluationInterface({
 
       // Get available metrics to determine categories
       const availableMetrics = getAvailableMetrics();
+      const retrievalMetrics = selectedMetrics
+        .filter(metricId => {
+          const metric = availableMetrics.find(m => m.id === metricId);
+          return metric && (metric.category === 'Retrieval' || metric.category === 'Retrieval Token');
+        });
+
+      const generationMetrics = selectedMetrics
+        .filter(metricId => {
+          const metric = availableMetrics.find(m => m.id === metricId);
+          return metric && metric.category === 'Generation';
+        })
+        .map(metricId => ({ metric_name: metricId }));
       
       // Prepare evaluation configuration
       const evaluationConfig = {
-        embedding_model: "openai_embed_3_large",
+        embedding_model: embeddingModel,
         retrieval_strategy: {
-          metrics: selectedMetrics
-            .filter(metricId => {
-              const metric = availableMetrics.find(m => m.id === metricId);
-              return metric && (metric.category === 'Retrieval' || metric.category === 'Retrieval Token');
-            }),
-          top_k: 10
+          metrics: retrievalMetrics,
+          top_k: retrievalTopK
         },
-        generation_strategy: {
-          metrics: selectedMetrics
-            .filter(metricId => {
-              const metric = availableMetrics.find(m => m.id === metricId);
-              return metric && metric.category === 'Generation';
-            })
-            .map(metricId => ({ metric_name: metricId }))
-        },
-        generator_config: selectedGenerator ? {
-          model: generatorParams.model || "gpt-4o-mini",
+        generation_strategy: isGeneratorRequired() ? {
+          metrics: generationMetrics,
+        } : undefined,
+        generator_config: selectedGenerator && isGeneratorRequired() ? {
+          model: selectedGenerator, // Use selectedGenerator directly as the model ID
           temperature: Number(generatorParams.temperature) || 0.7,
           max_tokens: Number(generatorParams.max_tokens) || 512,
           batch: Number(generatorParams.batch) || 16
@@ -801,12 +875,12 @@ function EvaluationInterface({
 
       // Create evaluation request
       const evaluationRequest = {
-        name: `Evaluation - ${sourceDetails.name} vs ${currentRAGRetriever.name}`,
+        name: evaluationName.trim() || `Evaluation - ${sourceDetails.name}`,
         benchmark_dataset_id: selectedSource, // This is the benchmark dataset ID
         evaluation_config: evaluationConfig
       };
 
-      console.log('Starting evaluation with request:', evaluationRequest);
+      console.log('Starting evaluation with request:', JSON.stringify(evaluationRequest, null, 2));
 
       const response = await fetch(`${API_URL}/eval/`, {
         method: 'POST',
@@ -817,11 +891,25 @@ function EvaluationInterface({
       });
 
       if (!response.ok) {
-        if (response.status === 422) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(`Validation error: ${errorData.message || 'Invalid evaluation configuration'}`);
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          if (response.status === 422 && errorData.detail) {
+            // Handle FastAPI validation errors
+            const validationErrors = Array.isArray(errorData.detail) 
+              ? errorData.detail.map((err: any) => `${err.loc?.join('.')} - ${err.msg}`).join('; ')
+              : errorData.detail;
+            errorMessage = `Validation error: ${validationErrors}`;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (parseError) {
+          // If we can't parse the error response, use the status
+          console.error('Failed to parse error response:', parseError);
         }
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(errorMessage);
       }
 
       const evaluationResponse = await response.json();
@@ -829,7 +917,7 @@ function EvaluationInterface({
 
       // Create local result tracking
       const newResult: EvaluationResults = {
-        systemId: selectedRAGRetrieverId,
+        systemId: `eval-${Date.now()}`, // Use timestamp instead of retriever ID
         sourceId: selectedSource,
         startTime: new Date(),
         metrics: [],
@@ -852,7 +940,6 @@ function EvaluationInterface({
       setResults((prev) =>
         prev.map((result) => {
           if (
-            result.systemId === selectedRAGRetrieverId &&
             result.sourceId === selectedSource &&
             result.status === "running"
           ) {
@@ -868,10 +955,6 @@ function EvaluationInterface({
     } finally {
       setIsEvaluating(false);
     }
-  };
-
-  const getRAGRetrieverName = (id: string) => {
-    return ragRetrievers.find((config: RAGRetriever) => config.id === id)?.name || id;
   };
 
   const getSourceName = (id: string) => {
@@ -916,45 +999,24 @@ function EvaluationInterface({
 
     if (!sourceDetails.supported_metrics || sourceDetails.supported_metrics.length === 0) {
       if (sourceDetails.type === 'library') {
-        let metricsToConsider = DEFAULT_LIBRARY_METRICS_OBJECTS;
-        if (selectedRAGRetrieverId) {
-          const ragRetrieverDetails = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
-          if (ragRetrieverDetails && ragRetrieverDetails.availableMetrics) {
-            const ragMetricIds = new Set(ragRetrieverDetails.availableMetrics.map((m: Metric) => m.id));
-            metricsToConsider = metricsToConsider.filter((m: Metric) => ragMetricIds.has(m.id));
-          } else {
-            metricsToConsider = [];
-          }
-        }
-        return metricsToConsider;
+        // For libraries without explicit metrics, return default library metrics
+        return DEFAULT_LIBRARY_METRICS_OBJECTS;
       } else {
         return [];
       }
     }
 
-    let metricsFromSource: Metric[] = sourceDetails.supported_metrics;
-
-    if (selectedRAGRetrieverId) {
-      const ragRetrieverDetails = ragRetrievers.find((rc: RAGRetriever) => rc.id === selectedRAGRetrieverId);
-      if (ragRetrieverDetails && ragRetrieverDetails.availableMetrics) {
-        const ragMetricIds = new Set(ragRetrieverDetails.availableMetrics.map((m: Metric) => m.id));
-        metricsFromSource = metricsFromSource.filter((m: Metric) => ragMetricIds.has(m.id));
-      } else {
-        metricsFromSource = [];
-      }
-    }
-    
-    return metricsFromSource;
+    // For sources with explicit supported metrics, return those
+    return sourceDetails.supported_metrics;
   };
 
-  // Check if generator is required for current selection
   const isGeneratorRequired = (): boolean => {
     if (!selectedSource) return false;
+    
     const sourceDetails = sources.find(s => s.id === selectedSource);
     if (!sourceDetails) return false;
     
-    const availableMetrics = getAvailableMetrics();
-    return availableMetrics.some(metric => metric.category === 'Generation');
+    return sourceRequiresGenerator(sourceDetails);
   };
 
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
@@ -1199,6 +1261,16 @@ function EvaluationInterface({
             </CardHeader>
             <CardContent className="pt-6">
               <div className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="eval-name">Evaluation Name (Optional)</Label>
+                  <Input
+                    id="eval-name"
+                    value={evaluationName}
+                    onChange={(e) => setEvaluationName(e.target.value)}
+                    placeholder="e.g., My Awesome Evaluation Run"
+                  />
+                </div>
+                
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="source-eval">Source</Label>
@@ -1220,46 +1292,71 @@ function EvaluationInterface({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="rag-retriever-eval">Retriever</Label>
-                    <Select
-                      value={selectedRAGRetrieverId} 
-                      onValueChange={(value) => {
-                        setSelectedRAGRetrieverId(value);
-                      }}
-                    >
-                      <SelectTrigger id="rag-retriever-eval"> 
-                        <SelectValue placeholder="Select retriever" /> 
+                    <Label htmlFor="embedding-model">Embedding Model</Label>
+                    <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+                      <SelectTrigger id="embedding-model">
+                        <SelectValue placeholder="Select embedding model" />
                       </SelectTrigger>
-                      <SelectContent position="popper">
-                        {ragRetrievers.map((config: RAGRetriever) => ( 
-                          <SelectItem key={config.id} value={config.id}>
-                            {config.name}
-                          </SelectItem>
-                        ))}
+                      <SelectContent>
+                        {isLoadingEmbeddingModels ? (
+                          <SelectItem value="loading" disabled>Loading models...</SelectItem>
+                        ) : embeddingModelsError ? (
+                          <SelectItem value="error" disabled>Error loading models</SelectItem>
+                        ) : embeddingModels.length === 0 ? (
+                          <SelectItem value="none" disabled>No models available</SelectItem>
+                        ) : (
+                          embeddingModels.map((model) => (
+                            <SelectItem key={model.id} value={model.model}>
+                              {model.description || model.name}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="retrieval-top-k">Retrieval Top K</Label>
+                  <Input
+                    id="retrieval-top-k"
+                    type="number"
+                    value={retrievalTopK}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 1 && val <= 100) {
+                        setRetrievalTopK(val);
+                      }
+                    }}
+                    min={1}
+                    max={100}
+                    placeholder="10"
+                  />
+                  <p className="text-xs text-muted-foreground">Number of documents to retrieve for evaluation</p>
                 </div>
 
                 {/* Generator section - only show if the selected source requires generation */}
                 {isGeneratorRequired() && (
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="generator-eval">Generator</Label>
+                      <Label htmlFor="generator-eval">OpenAI LLM Model</Label>
                       <Select
                         value={selectedGenerator}
                         onValueChange={(value) => {
                           setSelectedGenerator(value);
-                          setGeneratorParams(initializeDefaultParamsForModule('generator', value));
+                          setGeneratorParams(prev => ({
+                            ...prev,
+                            model: value
+                          }));
                         }}
                       >
                         <SelectTrigger id="generator-eval">
-                          <SelectValue placeholder="Select generator" />
+                          <SelectValue placeholder="Select OpenAI LLM model" />
                         </SelectTrigger>
                         <SelectContent position="popper">
-                          {GENERATOR_MODULES.map((generator) => (
-                            <SelectItem key={generator.id} value={generator.id}>
-                              {generator.name}
+                          {OPENAI_LLM_MODELS.map((model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              {model.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1268,8 +1365,66 @@ function EvaluationInterface({
 
                     {selectedGenerator && (
                       <div className="p-4 border rounded-md bg-muted/20">
-                        <h4 className="text-sm font-medium mb-3">Generator Parameters</h4>
-                        {renderModuleSelector('generator', selectedGenerator, () => {}, generatorParams, handleNewConfigParamChange)}
+                        <h4 className="text-sm font-medium mb-3">Model Parameters</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="temperature">Temperature</Label>
+                            <Input
+                              id="temperature"
+                              type="number"
+                              value={String(generatorParams.temperature)}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                if (!isNaN(val) && val >= 0.0 && val <= 2.0) {
+                                  setGeneratorParams(prev => ({ ...prev, temperature: val }));
+                                }
+                              }}
+                              min={0.0}
+                              max={2.0}
+                              step={0.1}
+                              placeholder="0.7"
+                            />
+                            <p className="text-xs text-muted-foreground">Controls randomness (0.0-2.0)</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="max-tokens">Max Tokens</Label>
+                            <Input
+                              id="max-tokens"
+                              type="number"
+                              value={String(generatorParams.max_tokens)}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (!isNaN(val) && val >= 1 && val <= 4096) {
+                                  setGeneratorParams(prev => ({ ...prev, max_tokens: val }));
+                                }
+                              }}
+                              min={1}
+                              max={4096}
+                              step={1}
+                              placeholder="512"
+                            />
+                            <p className="text-xs text-muted-foreground">Maximum tokens to generate</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="batch-size">Batch Size</Label>
+                            <Input
+                              id="batch-size"
+                              type="number"
+                              value={String(generatorParams.batch)}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (!isNaN(val) && val >= 1 && val <= 128) {
+                                  setGeneratorParams(prev => ({ ...prev, batch: val }));
+                                }
+                              }}
+                              min={1}
+                              max={128}
+                              step={1}
+                              placeholder="16"
+                            />
+                            <p className="text-xs text-muted-foreground">Parallel processing batch size</p>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1289,7 +1444,7 @@ function EvaluationInterface({
                   </div>
                 )}
 
-                {currentRAGRetriever && currentSourceDetails && (isGeneratorRequired() ? selectedGenerator : true) && ( 
+                {currentSourceDetails && (isGeneratorRequired() ? selectedGenerator : true) && ( 
                   <Card className="bg-muted/50">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-lg">Evaluation Setup Details</CardTitle>
@@ -1306,18 +1461,21 @@ function EvaluationInterface({
                             )}
                         </div>
                         <div className="pt-2 border-t">
-                             <p className="mt-2"><span className="font-semibold">Retriever:</span> {currentRAGRetriever.name}</p> 
-                            <p className="text-xs text-muted-foreground">{currentRAGRetriever.description}</p>
+                             <p className="mt-2"><span className="font-semibold">Embedding Model:</span> {embeddingModel}</p> 
+                            <p className="text-xs text-muted-foreground">Vector embeddings for document retrieval</p>
                             <div className="mt-2 space-y-1">
-                                <p className="text-xs"><span className="font-semibold">Parser:</span> {apiFetchedParsers.find(m => m.id === currentRAGRetriever.parser.moduleId)?.name || 'N/A (API Error or not found)'}</p>
-                                <p className="text-xs"><span className="font-semibold">Chunker:</span> {apiFetchedChunkers.find(m => m.id === currentRAGRetriever.chunker.moduleId)?.name || 'N/A (API Error or not found)'}</p>
-                                <p className="text-xs"><span className="font-semibold">Indexer:</span> {apiFetchedIndexers.find(m => m.id === currentRAGRetriever.indexer.moduleId)?.name || 'N/A (API Error or not found)'}</p>
+                                <p className="text-xs"><span className="font-semibold">Retrieval Top K:</span> {retrievalTopK} documents</p>
                             </div>
                         </div>
                         {isGeneratorRequired() && selectedGenerator && (
                           <div className="pt-2 border-t">
-                              <p><span className="font-semibold">Generator:</span> {GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
-                              <p className="text-xs text-muted-foreground">{GENERATOR_MODULES.find(m => m.id === selectedGenerator)?.description || ''}</p>
+                              <p><span className="font-semibold">Generator:</span> {OPENAI_LLM_MODELS.find(m => m.id === selectedGenerator)?.name || 'N/A'}</p>
+                              <p className="text-xs text-muted-foreground">{OPENAI_LLM_MODELS.find(m => m.id === selectedGenerator)?.description || ''}</p>
+                              <div className="mt-2 space-y-1">
+                                <p className="text-xs"><span className="font-semibold">Temperature:</span> {generatorParams.temperature}</p>
+                                <p className="text-xs"><span className="font-semibold">Max Tokens:</span> {generatorParams.max_tokens}</p>
+                                <p className="text-xs"><span className="font-semibold">Batch Size:</span> {generatorParams.batch}</p>
+                              </div>
                           </div>
                         )}
                         {!isGeneratorRequired() && (
@@ -1330,14 +1488,12 @@ function EvaluationInterface({
                   </Card>
                 )}
 
-                {currentSourceDetails && currentRAGRetriever && (isGeneratorRequired() ? selectedGenerator : true) && ( 
+                {currentSourceDetails && (isGeneratorRequired() ? selectedGenerator : true) && ( 
                   <div className="space-y-3 pt-3">
                     <Label className="text-base font-medium">Select Metrics to Evaluate</Label>
                     <p className="text-xs text-muted-foreground">
-                      {selectedSource && !selectedRAGRetrieverId && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
-                       selectedSource && selectedRAGRetrieverId && currentSourceDetails && currentRAGRetriever ? `Common metrics for ${currentSourceDetails.name} and ${currentRAGRetriever.name}:` : 
-                       !selectedSource && selectedRAGRetrieverId && currentRAGRetriever ? `Metrics available in ${currentRAGRetriever.name}:` : 
-                       `Select a Source${isGeneratorRequired() ? ', Retriever, and Generator' : ' and Retriever'} to see available metrics.`}
+                      {selectedSource && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
+                       `Select a Source${isGeneratorRequired() ? ' and Generator' : ''} to see available metrics.`}
                     </p>
                     {displayableMetrics.length > 0 ? (
                       ['Retrieval', 'Retrieval Token', 'Generation'].map(category => {
@@ -1374,7 +1530,7 @@ function EvaluationInterface({
                                       setSelectedMetrics(prev => [...new Set([...prev, ...categoryMetricIds])]);
                                     }
                                   }}
-                                  disabled={!selectedSource || !selectedRAGRetrieverId} 
+                                  disabled={!selectedSource} 
                                 />
                                 <Label htmlFor={`select-all-${category.toLowerCase().replace(' ', '-')}`} className="text-sm font-normal cursor-pointer">
                                   Select All
@@ -1388,7 +1544,7 @@ function EvaluationInterface({
                                     id={`metric-${metric.id}`}
                                     checked={selectedMetrics.includes(metric.id)}
                                     onCheckedChange={() => handleMetricSelection(metric.id)}
-                                    disabled={!selectedSource || !selectedRAGRetrieverId} 
+                                    disabled={!selectedSource} 
                                   />
                                   <Label htmlFor={`metric-${metric.id}`} className="text-sm font-normal cursor-pointer">
                                     {metric.name}
@@ -1401,7 +1557,7 @@ function EvaluationInterface({
                       })
                     ) : (
                         <p className="text-sm text-muted-foreground pt-2">
-                          {selectedSource && selectedRAGRetrieverId ? "No common metrics found for the selected Source and Retriever." : "No metrics available for the current selection."}
+                          {selectedSource ? "No metrics available for the selected source." : "No metrics available for the current selection."}
                         </p>
                     )}
                   </div>
@@ -1410,10 +1566,22 @@ function EvaluationInterface({
                 <Button
                   className="w-full pt-2"
                   onClick={startEvaluation}
-                  disabled={!selectedRAGRetrieverId || !selectedSource || (isGeneratorRequired() && !selectedGenerator) || selectedMetrics.length === 0 || isEvaluating} 
+                  disabled={!selectedSource || (isGeneratorRequired() && !selectedGenerator) || selectedMetrics.length === 0 || isEvaluating} 
                 >
                   {isEvaluating ? "Evaluating..." : "Start Evaluation & View Results"}
                 </Button>
+                
+                {/* Show helpful hints when required fields are missing */}
+                {(!selectedSource || selectedMetrics.length === 0 || (isGeneratorRequired() && !selectedGenerator)) && !isEvaluating && (
+                  <div className="text-sm text-muted-foreground mt-3 p-3 bg-muted rounded-md">
+                    <p className="font-medium mb-2">Complete these steps to start evaluation:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      {!selectedSource && <li>Select a benchmark dataset from the available options</li>}
+                      {selectedMetrics.length === 0 && <li>Select at least one evaluation metric to measure performance</li>}
+                      {isGeneratorRequired() && !selectedGenerator && <li>Select a generator (required for generation metrics like BLEU, ROUGE)</li>}
+                    </ul>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1591,12 +1759,12 @@ export default function EvalPage() {
             type: 'benchmark' as const,
             supported_metrics: [
               // All benchmark datasets support both retrieval and generation metrics
-              ALL_METRICS.recall,
-              ALL_METRICS.precision,
-              ALL_METRICS.f1,
-              ALL_METRICS.map,
-              ALL_METRICS.mrr,
-              ALL_METRICS.ndcg,
+              ALL_METRICS.retrieval_recall,
+              ALL_METRICS.retrieval_precision,
+              ALL_METRICS.retrieval_f1,
+              ALL_METRICS.retrieval_map,
+              ALL_METRICS.retrieval_mrr,
+              ALL_METRICS.retrieval_ndcg,
               ALL_METRICS.bleu,
               ALL_METRICS.rouge,
               ALL_METRICS.meteor,
@@ -1658,9 +1826,9 @@ export default function EvalPage() {
               parameterValues: {} 
             },
             availableMetrics: [
-              ALL_METRICS.recall, 
-              ALL_METRICS.precision, 
-              ALL_METRICS.f1,
+              ALL_METRICS.retrieval_recall, 
+              ALL_METRICS.retrieval_precision, 
+              ALL_METRICS.retrieval_f1,
               ALL_METRICS.bleu, 
               ALL_METRICS.meteor, 
               ALL_METRICS.rouge, 
