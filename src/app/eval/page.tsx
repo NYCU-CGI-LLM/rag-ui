@@ -2382,28 +2382,7 @@ function EvaluationInterface({
                 </div>
               )}
               
-              {/* Results */}
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">Evaluation Results</h3>
-                <div className="border rounded-md">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Metric</TableHead>
-                        <TableHead>Value</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedEvaluationDetail.results.map((result) => (
-                        <TableRow key={result.metric_name}>
-                          <TableCell className="font-medium">{result.metric_name}</TableCell>
-                          <TableCell className="font-mono">{result.value.toFixed(6)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+
               
               {/* Detailed Results (if available) */}
               {selectedEvaluationDetail.detailed_results && (
@@ -2417,7 +2396,9 @@ function EvaluationInterface({
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
                           <span className="text-muted-foreground">Overall Score:</span>
-                          <p className="font-mono font-medium">{selectedEvaluationDetail.detailed_results.summary.overall_score.toFixed(6)}</p>
+                          <p className="font-mono font-medium">
+                            {selectedEvaluationDetail.detailed_results.summary.overall_score?.toFixed(6) || 'N/A'}
+                          </p>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Total Queries:</span>
