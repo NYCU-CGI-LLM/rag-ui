@@ -69,6 +69,25 @@ interface ApiBenchmarkDataset {
   updated_at: string;
 }
 
+interface ApiBenchmarkDatasetDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  domain: string | null;
+  language: string;
+  version: string;
+  total_queries: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  evaluation_metrics: {
+    retrieval: string[];
+    generation: string[];
+  } | null;
+  file_info?: any;
+  sample_data?: any;
+}
+
 // API Response Interfaces for Parser Data
 interface ApiParserParameterValue {
   [key: string]: string | number | boolean;
@@ -307,12 +326,12 @@ const MAX_TOKEN_DICT: { [key: string]: number } = {
 // OpenAI LLM models for evaluation - simplified list of most commonly used models
 const OPENAI_LLM_MODELS = [
   { id: "gpt-4o", name: "GPT-4o", description: "Most advanced multimodal model" },
-  { id: "gpt-4o-mini", name: "GPT-4o Mini", description: "Efficient and cost-effective model" },
-  { id: "gpt-4-turbo", name: "GPT-4 Turbo", description: "Enhanced GPT-4 with larger context" },
+  { id: "gpt-4o-mini", name: "GPT-4o mini", description: "Efficient and cost-effective model" },
+  { id: "gpt-4-turbo", name: "GPT-4 turbo", description: "Enhanced GPT-4 with larger context" },
   { id: "gpt-4", name: "GPT-4", description: "High-quality language model" },
-  { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo", description: "Fast and efficient model" },
-  { id: "o1-preview", name: "o1 Preview", description: "Advanced reasoning model" },
-  { id: "o1-mini", name: "o1 Mini", description: "Reasoning model, smaller version" }
+  { id: "gpt-3.5-turbo", name: "GPT-3.5 turbo", description: "Fast and efficient model" },
+  { id: "o1-preview", name: "o1 preview", description: "Advanced reasoning model" },
+  { id: "o1-mini", name: "o1 mini", description: "Reasoning model, smaller version" }
 ];
 
 // Generator modules (based on chat page design)
@@ -780,6 +799,12 @@ function EvaluationInterface({
   const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
   const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
 
+  // Benchmark dataset details and available metrics state
+  const [selectedBenchmarkDetail, setSelectedBenchmarkDetail] = useState<ApiBenchmarkDatasetDetail | null>(null);
+  const [isLoadingBenchmarkDetail, setIsLoadingBenchmarkDetail] = useState(false);
+  const [benchmarkDetailError, setBenchmarkDetailError] = useState<string | null>(null);
+  const [availableMetrics, setAvailableMetrics] = useState<Metric[]>([]);
+
   const currentSourceDetails = sources.find(s => s.id === selectedSource);
 
   // Fetch embedding models from indexer API
@@ -827,6 +852,18 @@ function EvaluationInterface({
 
     fetchEmbeddingModels();
   }, []);
+
+  // Fetch benchmark details when a benchmark source is selected
+  useEffect(() => {
+    if (selectedSource && currentSourceDetails?.type === 'benchmark') {
+      fetchBenchmarkDetail(selectedSource);
+    } else {
+      // Clear benchmark details if no benchmark selected
+      setSelectedBenchmarkDetail(null);
+      setAvailableMetrics([]);
+      setBenchmarkDetailError(null);
+    }
+  }, [selectedSource, currentSourceDetails?.type]);
 
   // Fetch evaluation results from API
   const fetchEvaluationResults = async () => {
@@ -887,32 +924,68 @@ function EvaluationInterface({
     }
   };
 
-  useEffect(() => {
-    const availableMetrics = getAvailableMetrics();
-    setDisplayableMetrics(availableMetrics);
-    
-    // Auto-select some default metrics when available metrics change
-    if (availableMetrics.length > 0) {
-      const defaultMetrics = [];
-      // Auto-select retrieval metrics
-      if (availableMetrics.find(m => m.id === 'retrieval_recall')) defaultMetrics.push('retrieval_recall');
-      if (availableMetrics.find(m => m.id === 'retrieval_precision')) defaultMetrics.push('retrieval_precision');
-      if (availableMetrics.find(m => m.id === 'retrieval_f1')) defaultMetrics.push('retrieval_f1');
-      // Auto-select generation metrics if available
-      if (availableMetrics.find(m => m.id === 'bleu')) defaultMetrics.push('bleu');
-      if (availableMetrics.find(m => m.id === 'rouge')) defaultMetrics.push('rouge');
+  // Fetch benchmark dataset details and available metrics
+  const fetchBenchmarkDetail = async (benchmarkId: string) => {
+    try {
+      setIsLoadingBenchmarkDetail(true);
+      setBenchmarkDetailError(null);
+      setSelectedBenchmarkDetail(null);
+      setAvailableMetrics([]);
       
-      setSelectedMetrics(defaultMetrics);
-    } else {
-      setSelectedMetrics([]);
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/eval/benchmarks/${benchmarkId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const detail: ApiBenchmarkDatasetDetail = await response.json();
+      setSelectedBenchmarkDetail(detail);
+
+      // Transform evaluation_metrics to Metric objects
+      const metrics: Metric[] = [];
+      if (detail.evaluation_metrics) {
+        // Add retrieval metrics
+        detail.evaluation_metrics.retrieval.forEach(metricName => {
+          if (ALL_METRICS[metricName]) {
+            metrics.push(ALL_METRICS[metricName]);
+          }
+        });
+        
+        // Add generation metrics
+        detail.evaluation_metrics.generation.forEach(metricName => {
+          if (ALL_METRICS[metricName]) {
+            metrics.push(ALL_METRICS[metricName]);
+          }
+        });
+      }
+      
+      setAvailableMetrics(metrics);
+    } catch (error) {
+      console.error('Failed to fetch benchmark detail:', error);
+      setBenchmarkDetailError(error instanceof Error ? error.message : 'Failed to fetch benchmark detail');
+      setSelectedBenchmarkDetail(null);
+      setAvailableMetrics([]);
+    } finally {
+      setIsLoadingBenchmarkDetail(false);
     }
+  };
+
+  useEffect(() => {
+    const currentAvailableMetrics = getAvailableMetrics();
+    setDisplayableMetrics(currentAvailableMetrics);
+    
+    // Clear selected metrics when available metrics change (no default selections)
+    setSelectedMetrics([]);
     
     // Clear generator selection if not required
     if (!isGeneratorRequired() && selectedGenerator) {
       setSelectedGenerator("");
       setGeneratorParams({});
     }
-  }, [selectedSource, sources]); // Remove selectedRAGRetrieverId and ragRetrievers dependencies
+  }, [selectedSource, sources, availableMetrics, selectedBenchmarkDetail]); // Added availableMetrics and selectedBenchmarkDetail dependencies
 
   // Fetch evaluation results when switching to results tab
   useEffect(() => {
@@ -1091,8 +1164,13 @@ function EvaluationInterface({
 
   // Helper function to check if a source requires generator (has Generation metrics)
   const sourceRequiresGenerator = (source: Source): boolean => {
+    // For benchmark sources, check if generation metrics are available from API
+    if (source.type === 'benchmark' && selectedBenchmarkDetail?.evaluation_metrics) {
+      return selectedBenchmarkDetail.evaluation_metrics.generation.length > 0;
+    }
+    
+    // For library sources, check supported metrics or default to true
     if (!source.supported_metrics || source.supported_metrics.length === 0) {
-      // If no supported metrics specified, assume library type may need generator
       return source.type === 'library';
     }
     // Check if any supported metrics are Generation category
@@ -1106,6 +1184,12 @@ function EvaluationInterface({
     const sourceDetails = sources.find(s => s.id === selectedSource);
     if (!sourceDetails) return [];
 
+    // For benchmark sources, use API-provided metrics
+    if (sourceDetails.type === 'benchmark') {
+      return availableMetrics;
+    }
+
+    // For library sources, use supported metrics or default library metrics
     if (!sourceDetails.supported_metrics || sourceDetails.supported_metrics.length === 0) {
       if (sourceDetails.type === 'library') {
         // For libraries without explicit metrics, return default library metrics
@@ -1398,6 +1482,35 @@ function EvaluationInterface({
                         ))}
                       </SelectContent>
                     </Select>
+                    {/* Show loading state for benchmark details */}
+                    {selectedSource && currentSourceDetails?.type === 'benchmark' && isLoadingBenchmarkDetail && (
+                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Loading benchmark details...</span>
+                      </div>
+                    )}
+                    {/* Show error state for benchmark details */}
+                    {selectedSource && currentSourceDetails?.type === 'benchmark' && benchmarkDetailError && (
+                      <div className="text-sm text-red-600">
+                        Error loading benchmark details: {benchmarkDetailError}
+                      </div>
+                    )}
+                    {/* Show benchmark info when loaded */}
+                    {selectedSource && currentSourceDetails?.type === 'benchmark' && selectedBenchmarkDetail && !isLoadingBenchmarkDetail && (
+                      <div className="text-sm text-muted-foreground">
+                        <div>Dataset: {selectedBenchmarkDetail.total_queries} queries</div>
+                        {selectedBenchmarkDetail.evaluation_metrics && (
+                          <div>
+                            Available metrics: 
+                            {selectedBenchmarkDetail.evaluation_metrics.retrieval.length > 0 && ` ${selectedBenchmarkDetail.evaluation_metrics.retrieval.length} retrieval`}
+                            {selectedBenchmarkDetail.evaluation_metrics.generation.length > 0 && `, ${selectedBenchmarkDetail.evaluation_metrics.generation.length} generation`}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -1562,12 +1675,6 @@ function EvaluationInterface({
                         <div>
                             <p><span className="font-semibold">Source:</span> {currentSourceDetails.name} ({currentSourceDetails.type})</p>
                             <p className="text-xs text-muted-foreground">{currentSourceDetails.description}</p>
-                            {currentSourceDetails.type === 'benchmark' && currentSourceDetails.supported_metrics && currentSourceDetails.supported_metrics.length > 0 && (
-                                <p className="text-xs text-muted-foreground mt-1">Typically supports: {currentSourceDetails.supported_metrics.map(m => m.name).join(', ')}</p>
-                            )}
-                             {currentSourceDetails.type === 'library' && (!currentSourceDetails.supported_metrics || currentSourceDetails.supported_metrics.length === 0) && (
-                                <p className="text-xs text-muted-foreground mt-1">Typically supports: {DEFAULT_LIBRARY_METRICS_OBJECTS.map(m => m.name).join(', ')}</p>
-                            )}
                         </div>
                         <div className="pt-2 border-t">
                              <p className="mt-2"><span className="font-semibold">Embedding Model:</span> {embeddingModel}</p> 
@@ -1675,9 +1782,21 @@ function EvaluationInterface({
                 <Button
                   className="w-full pt-2"
                   onClick={startEvaluation}
-                  disabled={!selectedSource || (isGeneratorRequired() && !selectedGenerator) || selectedMetrics.length === 0 || isEvaluating} 
+                  disabled={
+                    !selectedSource || 
+                    (currentSourceDetails?.type === 'benchmark' && !!isLoadingBenchmarkDetail) ||
+                    (currentSourceDetails?.type === 'benchmark' && !!benchmarkDetailError) ||
+                    (isGeneratorRequired() && !selectedGenerator) || 
+                    selectedMetrics.length === 0 || 
+                    isEvaluating
+                  } 
                 >
-                  {isEvaluating ? "Evaluating..." : "Start Evaluation & View Results"}
+                  {isEvaluating 
+                    ? "Evaluating..." 
+                    : (isLoadingBenchmarkDetail && currentSourceDetails?.type === 'benchmark')
+                      ? "Loading..." 
+                      : "Start Evaluation & View Results"
+                  }
                 </Button>
               </div>
             </CardContent>
