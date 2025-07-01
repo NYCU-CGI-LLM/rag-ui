@@ -2365,6 +2365,23 @@ function EvaluationInterface({
                 </div>
               </div>
               
+              {/* Error Information (if status is failure) */}
+              {selectedEvaluationDetail.status === "failure" && selectedEvaluationDetail.message && (
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium text-red-600">Error Details</h3>
+                  <div className="p-4 border border-red-200 rounded-md bg-red-50 dark:bg-red-950/20">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                        Failure Reason:
+                      </p>
+                      <div className="text-sm text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/30 p-3 rounded border font-mono whitespace-pre-wrap break-words">
+                        {selectedEvaluationDetail.message}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {/* Results */}
               <div className="space-y-2">
                 <h3 className="text-lg font-medium">Evaluation Results</h3>
