@@ -20,6 +20,42 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Environment Variables
+
+Before running the app, copy the `.env.example` file to `.env.local` and update the values as needed:
+
+```bash
+cp .env.example .env.local
+```
+
+Edit `.env.local` and set the correct API server URL:
+
+```env
+API_SERVER_URL=http://your-api-server-address:8000
+```
+
+> **Note:** The app will not work correctly if `API_SERVER_URL` is not set.
+
+## Production Build & Deployment
+
+To deploy this app in production mode, follow these steps:
+
+```bash
+npm install
+npm run build
+npm run start
+```
+
+Alternatively, you can use the deployment script:
+
+```bash
+./deploy.sh
+```
+
+The production server will run at [http://localhost:3000](http://localhost:3000) by default.
+
+> **Note:** Do not use `npm run dev` for production deployment. Always use the build & start commands as shown above.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
