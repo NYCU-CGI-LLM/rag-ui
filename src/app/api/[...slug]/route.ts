@@ -69,7 +69,7 @@ async function handler(req: NextRequest) {
   headers.delete('connection');
 
   try {
-    let body: any = undefined;
+    let body: string | FormData | undefined = undefined;
     const contentType = req.headers.get('content-type') || '';
 
     // Handle request body based on method and content type
@@ -114,7 +114,7 @@ async function handler(req: NextRequest) {
       method: req.method,
       headers: headers,
       body: body,
-      // @ts-ignore - duplex is needed for streaming
+      // @ts-expect-error - duplex is needed for streaming
       duplex: 'half',
     });
 

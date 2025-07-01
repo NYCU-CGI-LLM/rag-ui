@@ -84,8 +84,8 @@ interface ApiBenchmarkDatasetDetail {
     retrieval: string[];
     generation: string[];
   } | null;
-  file_info?: any;
-  sample_data?: any;
+  file_info?: Record<string, unknown>;
+  sample_data?: Record<string, unknown>;
 }
 
 // API Response Interfaces for Parser Data
@@ -93,38 +93,13 @@ interface ApiParserParameterValue {
   [key: string]: string | number | boolean;
 }
 
-interface ApiParserEntry {
-  id: string;
-  name: string;
-  module_type: string;
-  supported_mime: string[];
-  params: ApiParserParameterValue;
-  status: string;
-  description?: string;
-}
 
-interface ApiParserListResponse {
-  total: number;
-  parsers: ApiParserEntry[];
-}
 
-// API Response Interfaces for Chunker Data  
-interface ApiChunkerEntry {
-  id: string;
-  name: string;
-  module_type: string;
-  chunk_method: string;
-  chunk_size: number | null;
-  chunk_overlap: number | null;
-  params: ApiParserParameterValue;
-  status: string;
-  description?: string;
-}
 
-interface ApiChunkerListResponse {
-  total: number;
-  chunkers: ApiChunkerEntry[];
-}
+
+// API Response Interfaces for Chunker Data
+
+
 
 // API Response Interfaces for Indexer Data
 interface ApiIndexerEntry {
@@ -227,11 +202,7 @@ interface Source {
   supported_metrics?: Metric[];
 }
 
-interface LibraryStub {
-  id: string;
-  name: string;
-  description: string;
-}
+
 
 interface EvaluationResultsMetric {
   metric: string;
@@ -499,182 +470,13 @@ const GENERATOR_MODULES: Module[] = [
   }
 ];
 
-// Utility function to format parameter names from snake_case to Title Case
-const formatParamName = (id: string): string => {
-  return id
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-};
 
-// Utility function to infer parameter type from value
-const inferParameterType = (value: string | number | boolean): ParameterType => {
-  if (typeof value === 'boolean') return 'boolean';
-  if (typeof value === 'number') return 'number';
-  return 'string';
-};
 
-// Transform API parser data to Module format
-const transformApiParsersToModules = (apiParsers: ApiParserEntry[]): Module[] => {
-  return apiParsers.map(apiParser => {
-    const parameters: ParameterDefinition[] = [];
 
-    // Add parameters from API
-    Object.entries(apiParser.params).forEach(([key, value]) => {
-      parameters.push({
-        id: key,
-        name: formatParamName(key),
-        type: inferParameterType(value),
-        defaultValue: value,
-        description: `${formatParamName(key)} parameter`
-      });
-    });
 
-    return {
-      id: apiParser.id, // Use the UUID from API
-      name: apiParser.name,
-      description: apiParser.description || `${apiParser.module_type} parser`,
-      type: 'parser' as const,
-      parameters
-    };
-  });
-};
 
-// Transform API chunker data to Module format
-const transformApiChunkersToModules = (apiChunkers: ApiChunkerEntry[]): Module[] => {
-  return apiChunkers.map(apiChunker => {
-    const parameters: ParameterDefinition[] = [];
 
-    // Add chunk_method parameter (always present for chunkers)
-    parameters.push({
-      id: 'chunk_method',
-      name: 'Chunk Method',
-      type: 'string',
-      defaultValue: apiChunker.chunk_method,
-      description: 'Method used for chunking'
-    });
 
-    // Add chunk_size parameter if available
-    if (apiChunker.chunk_size !== null) {
-      parameters.push({
-        id: 'chunk_size',
-        name: 'Chunk Size',
-        type: 'number',
-        defaultValue: apiChunker.chunk_size,
-        min: 100,
-        max: 4096,
-        step: 1,
-        description: 'Size of each chunk in tokens'
-      });
-    }
-
-    // Add chunk_overlap parameter if available
-    if (apiChunker.chunk_overlap !== null) {
-      parameters.push({
-        id: 'chunk_overlap',
-        name: 'Chunk Overlap',
-        type: 'number',
-        defaultValue: apiChunker.chunk_overlap,
-        min: 0,
-        max: 512,
-        step: 1,
-        description: 'Number of overlapping tokens between chunks'
-      });
-    }
-
-    // Add any additional parameters from API
-    Object.entries(apiChunker.params).forEach(([key, value]) => {
-      // Skip if already processed by specific handlers above
-      if (key !== 'chunk_method' && key !== 'chunk_size' && key !== 'chunk_overlap') {
-        parameters.push({
-          id: key,
-          name: formatParamName(key),
-          type: inferParameterType(value),
-          defaultValue: value,
-          description: `${formatParamName(key)} parameter`
-        });
-      }
-    });
-
-    return {
-      id: apiChunker.id, // Use the UUID from API
-      name: apiChunker.name,
-      description: apiChunker.description || `${apiChunker.module_type} chunker (${apiChunker.chunk_method})`,
-      type: 'chunker' as const,
-      parameters
-    };
-  });
-};
-
-// Transform API indexer data to Module format
-const transformApiIndexersToModules = (apiIndexers: ApiIndexerEntry[]): Module[] => {
-  return apiIndexers.map(apiIndexer => {
-    const parameters: ParameterDefinition[] = [];
-
-    // Add index_type parameter (always present for indexers)
-    parameters.push({
-      id: 'index_type',
-      name: 'Index Type',
-      type: 'string',
-      defaultValue: apiIndexer.index_type,
-      description: 'Type of index (vector, bm25, hybrid)'
-    });
-
-    // Add model parameter (always present for indexers)
-    parameters.push({
-      id: 'model',
-      name: 'Model',
-      type: 'string',
-      defaultValue: apiIndexer.model,
-      description: 'Model used for indexing'
-    });
-
-    // Add any additional parameters from API
-    Object.entries(apiIndexer.params).forEach(([key, value]) => {
-      // Skip if already processed by specific handlers above
-      if (key !== 'index_type' && key !== 'model') {
-        // Special handling for certain parameter types
-        let paramType: ParameterType = inferParameterType(value);
-        let options: string[] | undefined = undefined;
-        
-        // Handle known parameter types
-        if (key === 'similarity_metric') {
-          paramType = 'select';
-          options = ['cosine', 'ip', 'l2'];
-        } else if (key === 'device') {
-          paramType = 'select';
-          options = ['cpu', 'cuda'];
-        } else if (key === 'input_type') {
-          paramType = 'select';
-          options = ['search_document', 'search_query', 'classification', 'clustering'];
-        }
-
-        parameters.push({
-          id: key,
-          name: formatParamName(key),
-          type: paramType,
-          defaultValue: value,
-          options: options,
-          description: `${formatParamName(key)} parameter`,
-          // Add sensible constraints for numeric parameters
-          ...(paramType === 'number' && key.includes('dimension') && { min: 128, max: 4096, step: 1 }),
-          ...(paramType === 'number' && key.includes('batch') && { min: 1, max: 500, step: 1 }),
-          ...(paramType === 'number' && (key.includes('size') || key.includes('length')) && { min: 1, max: 2048, step: 1 }),
-          ...(paramType === 'number' && key.includes('weight') && { min: 0.0, max: 1.0, step: 0.1 }),
-          ...(paramType === 'number' && (key === 'b' || key === 'k1' || key === 'epsilon') && { min: 0.0, max: 2.0, step: 0.01 })
-        });
-      }
-    });
-
-    return {
-      id: apiIndexer.id, // Use the UUID from API
-      name: apiIndexer.name,
-      description: apiIndexer.description || `${apiIndexer.index_type} indexer using ${apiIndexer.model}`,
-      type: 'indexer' as const,
-      parameters
-    };
-  });
-};
 
 // Add interface for detailed evaluation results from GET /eval/{eval_id}
 interface ApiEvaluationDetail {
@@ -700,7 +502,7 @@ interface ApiEvaluationDetail {
       top_k: number;
     };
   };
-  dataset_config: any;
+  dataset_config: Record<string, unknown>;
   status: 'pending' | 'processing' | 'success' | 'failure' | 'terminated';
   progress: number | null;
   message: string | null;
@@ -740,7 +542,6 @@ interface ApiEvaluationDetail {
 }
 
 function EvaluationInterface({
-  ragRetrievers,
   sources,
 }: {
   ragRetrievers: RAGRetriever[];
@@ -751,17 +552,17 @@ function EvaluationInterface({
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
   const [displayableMetrics, setDisplayableMetrics] = useState<Metric[]>([]);
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [results, setResults] = useState<EvaluationResults[]>([]);
+
   const [activeTab, setActiveTab] = useState("run");
   
   // Benchmark management state
   const [benchmarks, setBenchmarks] = useState<ApiBenchmarkDataset[]>([]);
   const [isLoadingBenchmarks, setIsLoadingBenchmarks] = useState(false);
   const [benchmarksError, setBenchmarksError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedBenchmark, setSelectedBenchmark] = useState<ApiBenchmarkDataset | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showBenchmarkDetail, setShowBenchmarkDetail] = useState(false);
-  const [isCreatingBenchmark, setIsCreatingBenchmark] = useState(false);
-  const [showCreateBenchmarkForm, setShowCreateBenchmarkForm] = useState(false);
   const [evaluationName, setEvaluationName] = useState<string>("");
   
   // Store benchmark details with evaluation metrics for cards
@@ -797,20 +598,31 @@ function EvaluationInterface({
   const [isLoadingEmbeddingModels, setIsLoadingEmbeddingModels] = useState(true);
   const [embeddingModelsError, setEmbeddingModelsError] = useState<string | null>(null);
 
-  // API-fetched parsers state - not needed anymore for evaluation
+  // API-fetched parsers state - kept for legacy functions
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiFetchedParsers, setApiFetchedParsers] = useState<Module[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiParsersLoading, setApiParsersLoading] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiParsersError, setApiParsersError] = useState<string | null>(null);
 
-  // API-fetched chunkers state - not needed anymore for evaluation
+  // API-fetched chunkers state - kept for legacy functions
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiFetchedChunkers, setApiFetchedChunkers] = useState<Module[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiChunkersLoading, setApiChunkersLoading] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiChunkersError, setApiChunkersError] = useState<string | null>(null);
 
-  // API-fetched indexers state - not needed anymore for evaluation
+  // API-fetched indexers state - kept for legacy functions
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiFetchedIndexers, setApiFetchedIndexers] = useState<Module[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiIndexersLoading, setApiIndexersLoading] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [apiIndexersError, setApiIndexersError] = useState<string | null>(null);
+
+
 
   // Benchmark dataset details and available metrics state
   const [selectedBenchmarkDetail, setSelectedBenchmarkDetail] = useState<ApiBenchmarkDatasetDetail | null>(null);
@@ -864,6 +676,7 @@ function EvaluationInterface({
     };
 
     fetchEmbeddingModels();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch benchmarks when the benchmarks tab is activated
@@ -880,6 +693,7 @@ function EvaluationInterface({
         fetchBenchmarkDetailsForCard(benchmark.id);
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [benchmarks]);
 
   // Fetch benchmark details when a benchmark source is selected
@@ -922,11 +736,6 @@ function EvaluationInterface({
   // Refresh benchmarks list
   const refreshBenchmarks = () => {
     fetchBenchmarks();
-  };
-
-  // Handle benchmark creation
-  const handleCreateBenchmark = () => {
-    setShowCreateBenchmarkForm(true);
   };
 
   // Handle benchmark selection for details
@@ -1115,7 +924,8 @@ function EvaluationInterface({
       setSelectedGenerator("");
       setGeneratorParams({});
     }
-  }, [selectedSource, sources, availableMetrics, selectedBenchmarkDetail]); // Added availableMetrics and selectedBenchmarkDetail dependencies
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSource, sources, availableMetrics, selectedBenchmarkDetail, selectedGenerator]);
 
   // Fetch evaluation results when switching to results tab
   useEffect(() => {
@@ -1209,7 +1019,7 @@ function EvaluationInterface({
           if (response.status === 422 && errorData.detail) {
             // Handle FastAPI validation errors
             const validationErrors = Array.isArray(errorData.detail) 
-              ? errorData.detail.map((err: any) => `${err.loc?.join('.')} - ${err.msg}`).join('; ')
+              ? errorData.detail.map((err: Record<string, unknown>) => `${(err.loc as string[])?.join('.')} - ${err.msg}`).join('; ')
               : errorData.detail;
             errorMessage = `Validation error: ${validationErrors}`;
           } else if (errorData.message) {
@@ -1227,16 +1037,7 @@ function EvaluationInterface({
       const evaluationResponse = await response.json();
       console.log('Evaluation started:', evaluationResponse);
 
-      // Create local result tracking
-      const newResult: EvaluationResults = {
-        systemId: `eval-${Date.now()}`, // Use timestamp instead of retriever ID
-        sourceId: selectedSource,
-        startTime: new Date(),
-        metrics: [],
-        status: "running",
-      };
-
-      setResults((prev) => [...prev, newResult]);
+      // Local result tracking removed - using API results instead
 
       // Refresh evaluation results to show the new evaluation
       await fetchEvaluationResults();
@@ -1249,26 +1050,13 @@ function EvaluationInterface({
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setEvaluationsError(`Evaluation failed: ${errorMessage}`);
       
-      setResults((prev) =>
-        prev.map((result) => {
-          if (
-            result.sourceId === selectedSource &&
-            result.status === "running"
-          ) {
-            return {
-              ...result,
-              status: "failed",
-              endTime: new Date(),
-            };
-          }
-          return result;
-        })
-      );
+      // Error handling - results updated via API refresh
     } finally {
       setIsEvaluating(false);
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getSourceName = (id: string) => {
     const source = sources.find((s) => s.id === id);
     if (!source) return id;
@@ -1280,6 +1068,7 @@ function EvaluationInterface({
     return `${(durationInMs / 1000).toFixed(1)}s`;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getDurationDisplay = (result: EvaluationResults): string | null => {
     if (result.status === "completed" && result.startTime && result.endTime) {
       const duration = result.endTime.getTime() - result.startTime.getTime();
@@ -1342,6 +1131,7 @@ function EvaluationInterface({
     return sourceRequiresGenerator(sourceDetails);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const initializeDefaultParamsForModule = (moduleType: ModuleType, moduleId: string) => {
     let modulesOfType: Module[];
     
@@ -1357,15 +1147,16 @@ function EvaluationInterface({
       modulesOfType = []; // Should not happen for configured types
     }
     
-    const module = modulesOfType.find(m => m.id === moduleId);
-    if (!module) return {};
+    const currentModule = modulesOfType.find(m => m.id === moduleId);
+    if (!currentModule) return {};
     const params: { [key: string]: string | number | boolean } = {};
-    module.parameters.forEach(p => {
+    currentModule.parameters.forEach(p => {
       params[p.id] = p.defaultValue;
     });
     return params;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleNewConfigParamChange = (
     moduleType: ModuleType, 
     paramId: string, 
@@ -1378,6 +1169,7 @@ function EvaluationInterface({
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const renderModuleSelector = (
     moduleType: ModuleType,
     selectedModuleId: string,
@@ -1583,36 +1375,12 @@ function EvaluationInterface({
               <div>
                 <h2 className="text-xl font-bold">Manage Benchmarks</h2>
                 <p className="text-muted-foreground">
-                  Upload, view, and manage evaluation benchmark datasets
+                  View and manage evaluation benchmark datasets
                 </p>
               </div>
-              <Button onClick={handleCreateBenchmark} className="flex items-center gap-2">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Upload Benchmark
-              </Button>
             </div>
 
-            {/* Upload format reminder */}
-            <Card className="border-blue-200 bg-blue-50">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div className="text-sm">
-                    <p className="font-medium text-blue-900 mb-1">File Format Requirements</p>
-                    <p className="text-blue-800">Files should contain:</p>
-                    <ul className="list-disc list-inside mt-1 text-blue-700 space-y-1">
-                      <li><strong>QA data:</strong> columns ['qid', 'query', 'retrieval_gt', 'generation_gt']</li>
-                      <li><strong>Corpus data:</strong> columns ['doc_id', 'contents', 'metadata' (optional)]</li>
-                      <li><strong>Supported formats:</strong> .parquet, .csv, .json</li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+
 
             {/* Loading and Error States */}
             {isLoadingBenchmarks && (
@@ -1661,10 +1429,9 @@ function EvaluationInterface({
                           <div>
                             <h3 className="text-lg font-medium">No benchmarks found</h3>
                             <p className="text-sm text-muted-foreground">
-                              Upload your first benchmark dataset to get started
+                              Contact your administrator to add benchmark datasets
                             </p>
                           </div>
-                          <Button onClick={handleCreateBenchmark}>Upload Benchmark</Button>
                         </div>
                       </CardContent>
                     </Card>
@@ -2067,7 +1834,7 @@ function EvaluationInterface({
                     <Label className="text-base font-medium">Select Metrics to Evaluate</Label>
                     <p className="text-xs text-muted-foreground">
                       {selectedSource && currentSourceDetails ? `Metrics supported by ${currentSourceDetails.name}:` : 
-                       `Select a Source${isGeneratorRequired() ? ' and Generator' : ''} to see available metrics.`}
+                       'Select a Source' + (isGeneratorRequired() ? ' and Generator' : '') + ' to see available metrics.'}
                     </p>
                     {displayableMetrics.length > 0 ? (
                       ['Retrieval', 'Retrieval Token', 'Generation'].map(category => {
@@ -2189,13 +1956,13 @@ function EvaluationInterface({
               ) : apiEvaluationResults.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">No evaluation results found.</p>
-                  <p className="text-sm text-muted-foreground mt-1">Run an evaluation from the 'Run Evaluation' tab to see results here.</p>
+                  <p className="text-sm text-muted-foreground mt-1">{"Run an evaluation from the \"Run Evaluation\" tab to see results here."}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <p className="text-sm text-muted-foreground">
-                      Showing {apiEvaluationResults.length} evaluation run{apiEvaluationResults.length === 1 ? '' : 's'}
+                      {"Showing " + apiEvaluationResults.length + " evaluation run" + (apiEvaluationResults.length === 1 ? "" : "s")}
                     </p>
                     <Button variant="outline" size="sm" onClick={fetchEvaluationResults}>
                       Refresh

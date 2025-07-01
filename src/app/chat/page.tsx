@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
+
 import {
   Popover,
   PopoverContent,
@@ -315,7 +315,7 @@ interface ApiChatDetail {
   id: string;
   name: string;
   retriever_id: string;
-  metadata: any;
+  metadata: Record<string, unknown>;
   message_count: number;
   last_activity: string;
   config: ApiChatConfig;
@@ -328,7 +328,7 @@ interface ApiMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  metadata: any;
+  metadata: Record<string, unknown>;
   chat_id: string;
   created_at: string;
   updated_at: string;
@@ -353,24 +353,18 @@ interface ApiRetrieverDetail {
   parser_info: ComponentInfo | null;
   chunker_info: ComponentInfo | null;
   indexer_info: ComponentInfo | null;
-  pipeline_stats: any | null;
+  pipeline_stats: Record<string, unknown> | null;
 }
 
 interface ComponentInfo {
   id: string;
   name: string;
   type: string;
-  params?: any;
-}
-
-interface ComponentInfo {
-  id: string;
-  name: string;
-  type: string;
-  params?: any;
+  params?: Record<string, unknown>;
 }
 
 // Add interfaces for library and retriever API responses
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface ApiLibrary {
   id: string;
   library_name: string;
@@ -467,6 +461,7 @@ export default function ChatPage() {
   // Fetch chat sessions from API on component mount
   useEffect(() => {
     fetchChatSessions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load initial session data when sessions are loaded
@@ -495,7 +490,7 @@ export default function ChatPage() {
                 }),
               }]);
             }
-          } catch (error) {
+          } catch {
             // On error, show fallback message
             setMessages([{
               id: "initial-ai-message-error",
@@ -526,6 +521,7 @@ export default function ChatPage() {
         loadInitialMessages();
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoadingChats, chatSessions, selectedSessionId]);
 
 
@@ -785,7 +781,7 @@ export default function ChatPage() {
             }),
           }]);
         }
-      } catch (error) {
+      } catch {
         // On error, show fallback message with error indicator
         setMessages([{
           id: "initial-ai-message-error",
@@ -1026,7 +1022,7 @@ export default function ChatPage() {
       new Date(a.created_at + "Z").getTime() - new Date(b.created_at + "Z").getTime()
     );
     
-    return sortedMessages.map((apiMsg, index) => {
+    return sortedMessages.map((apiMsg) => {
       const timestamp = new Date(apiMsg.created_at + "Z").toLocaleTimeString([], { 
         hour: '2-digit', 
         minute: '2-digit',
@@ -1595,7 +1591,7 @@ export default function ChatPage() {
               <DialogHeader>
                 <DialogTitle>Create from Existing Session</DialogTitle>
                 <DialogDescription>
-                  Select a session to copy. A new session with the same configuration will be created with " copy" added to the name.
+                  Select a session to copy. A new session with the same configuration will be created with &quot; copy&quot; added to the name.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">

@@ -24,8 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
-  DialogClose
+  DialogTrigger
 } from "@/components/ui/dialog";
 import { Trash2, Eye, Download } from 'lucide-react';
 
@@ -108,7 +107,7 @@ export default function LibraryPage() {
       idCounts[id] = (idCounts[id] || 0) + 1;
     });
 
-    const duplicates = Object.entries(idCounts).filter(([_, count]) => count > 1).map(([id, _]) => id);
+    const duplicates = Object.entries(idCounts).filter(([, count]) => count > 1).map(([id]) => id);
     if (duplicates.length > 0) {
       console.warn("Duplicate document IDs found:", duplicates);
     }
@@ -151,7 +150,7 @@ export default function LibraryPage() {
         if (response.status === 409) {
           errorMessage = "Library name already exists. Please choose a different name.";
         } else if (response.status === 422 && errorData.detail) {
-          const validationErrors = errorData.detail.map((err: any) => `${err.loc.join('.')} - ${err.msg}`).join('\\n');
+          const validationErrors = errorData.detail.map((err: { loc?: string[]; msg?: string }) => `${err.loc?.join?.('.') || 'unknown'} - ${err.msg || 'unknown error'}`).join('\\n');
           errorMessage = `Validation Error:\\n${validationErrors}`;
         } else if (errorData.detail) {
           errorMessage = errorData.detail;
@@ -174,20 +173,20 @@ export default function LibraryPage() {
         try {
           const errorData = await response.json();
           errorText = errorData.detail || errorText;
-        } catch (e) { /* ignore if error response is not JSON */ }
+        } catch { /* ignore if error response is not JSON */ }
         throw new Error(errorText);
       }
       const detailedLibraryData = await response.json();
 
       setCurrentLibrary(detailedLibraryData);
-      const fetchedFiles = detailedLibraryData.files?.map((file: any) => ({
-        id: file.id,
-        file_name: file.file_name,
-        size_bytes: file.size_bytes,
-        uploaded_at: file.uploaded_at,
-        mime_type: file.mime_type,
+      const fetchedFiles = detailedLibraryData.files?.map((file: Record<string, unknown>) => ({
+        id: file.id as string,
+        file_name: file.file_name as string,
+        size_bytes: file.size_bytes as number,
+        uploaded_at: file.uploaded_at as string,
+        mime_type: file.mime_type as string,
       })) || [];
-      setDocuments(fetchedFiles.filter((file: any) => file.id != null)); 
+      setDocuments(fetchedFiles.filter((file: Document) => file.id != null)); 
 
       // Update this library within the main libraries list as well
       setLibraries(prevLibs =>
@@ -214,21 +213,7 @@ export default function LibraryPage() {
     setSearchQuery("");
   };
 
-  const handleDuplicateLibrary = () => {
-    if (currentLibrary) {
-      const newDuplicatedLibrary: Library = {
-        id: `local_dup_${Date.now()}`,
-        library_name: `${currentLibrary.library_name} copy`,
-        description: currentLibrary.description,
-        stats: { ...currentLibrary.stats },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setLibraries((prev) => [...prev, newDuplicatedLibrary]);
-      setCurrentLibrary(null);
-      setSelectedDocuments([]);
-    }
-  };
+
 
   const toggleDocumentSelection = (docId: string) => {
     setSelectedDocuments((prevSelected) =>
@@ -367,7 +352,7 @@ export default function LibraryPage() {
             if (errorData.detail) {
               errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
             }
-          } catch (e) {}
+          } catch {}
           alert(errorMessage);
         }
       } catch (error) {
@@ -469,7 +454,7 @@ export default function LibraryPage() {
           } else if (errorDetails.error) {
             errorMessage = errorDetails.error;
           }
-        } catch (e) {
+        } catch {
           // Use default error message if response parsing fails
         }
 
@@ -486,6 +471,7 @@ export default function LibraryPage() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleMainUploadButtonClick = () => {
     if (fileToUpload) {
       executeUpload(fileToUpload);
@@ -667,13 +653,7 @@ export default function LibraryPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                <Button 
-                  variant="outline" 
-                  className="mr-2" 
-                  onClick={handleDuplicateLibrary}
-                >
-                  Duplicate Library
-                </Button>
+
                 {selectedDocuments.length > 0 && (
                   <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                     <DialogTrigger asChild>
@@ -723,7 +703,7 @@ export default function LibraryPage() {
                   return (
                     <Card className="mt-4 text-center">
                       <CardContent className="p-6">
-                        <p className="text-muted-foreground">No files found matching "{searchQuery}"</p>
+                        <p className="text-muted-foreground">{"No files found matching \"" + searchQuery + "\""}</p>
                       </CardContent>
                     </Card>
                   );
@@ -872,7 +852,7 @@ export default function LibraryPage() {
                 <Label htmlFor="name">Library Name</Label>
                 <Input
                   id="name"
-                  placeholder="Enter library name"
+                  placeholder={"Enter library name"}
                   value={newLibraryName}
                   onChange={(e) => setNewLibraryName(e.target.value)}
                 />
@@ -904,7 +884,7 @@ export default function LibraryPage() {
             <DialogHeader>
               <DialogTitle>Delete Library</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete the library "{currentLibrary?.library_name}"? 
+                {"Are you sure you want to delete the library \"" + (currentLibrary?.library_name || "") + "\"? "}
                 This action cannot be undone and all associated documents may be lost.
               </DialogDescription>
             </DialogHeader>

@@ -352,7 +352,7 @@ export function CreateRetrieverDialog({ open, onOpenChange, onRetrieverCreated }
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const libraries = await response.json();
       
-      const sourcesFromLibraries: Source[] = libraries.map((lib: any) => ({
+      const sourcesFromLibraries: Source[] = libraries.map((lib: { id: string; library_name: string; description?: string }) => ({
         id: lib.id,
         name: lib.library_name,
         description: lib.description || '',
