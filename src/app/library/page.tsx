@@ -213,21 +213,7 @@ export default function LibraryPage() {
     setSearchQuery("");
   };
 
-  const handleDuplicateLibrary = () => {
-    if (currentLibrary) {
-      const newDuplicatedLibrary: Library = {
-        id: `local_dup_${Date.now()}`,
-        library_name: `${currentLibrary.library_name} copy`,
-        description: currentLibrary.description,
-        stats: { ...currentLibrary.stats },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setLibraries((prev) => [...prev, newDuplicatedLibrary]);
-      setCurrentLibrary(null);
-      setSelectedDocuments([]);
-    }
-  };
+
 
   const toggleDocumentSelection = (docId: string) => {
     setSelectedDocuments((prevSelected) =>
@@ -667,13 +653,7 @@ export default function LibraryPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-                <Button 
-                  variant="outline" 
-                  className="mr-2" 
-                  onClick={handleDuplicateLibrary}
-                >
-                  Duplicate Library
-                </Button>
+
                 {selectedDocuments.length > 0 && (
                   <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                     <DialogTrigger asChild>

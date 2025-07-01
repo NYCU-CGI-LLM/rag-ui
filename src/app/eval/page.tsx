@@ -563,8 +563,6 @@ function EvaluationInterface({
   const [selectedBenchmark, setSelectedBenchmark] = useState<ApiBenchmarkDataset | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showBenchmarkDetail, setShowBenchmarkDetail] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [showCreateBenchmarkForm, setShowCreateBenchmarkForm] = useState(false);
   const [evaluationName, setEvaluationName] = useState<string>("");
   
   // Store benchmark details with evaluation metrics for cards
@@ -738,11 +736,6 @@ function EvaluationInterface({
   // Refresh benchmarks list
   const refreshBenchmarks = () => {
     fetchBenchmarks();
-  };
-
-  // Handle benchmark creation
-  const handleCreateBenchmark = () => {
-    setShowCreateBenchmarkForm(true);
   };
 
   // Handle benchmark selection for details
@@ -1382,36 +1375,12 @@ function EvaluationInterface({
               <div>
                 <h2 className="text-xl font-bold">Manage Benchmarks</h2>
                 <p className="text-muted-foreground">
-                  Upload, view, and manage evaluation benchmark datasets
+                  View and manage evaluation benchmark datasets
                 </p>
               </div>
-              <Button onClick={handleCreateBenchmark} className="flex items-center gap-2">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Upload Benchmark
-              </Button>
             </div>
 
-            {/* Upload format reminder */}
-            <Card className="border-blue-200 bg-blue-50">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div className="text-sm">
-                    <p className="font-medium text-blue-900 mb-1">File Format Requirements</p>
-                    <p className="text-blue-800">Files should contain:</p>
-                    <ul className="list-disc list-inside mt-1 text-blue-700 space-y-1">
-                      <li><strong>QA data:</strong> columns [&apos;qid&apos;, &apos;query&apos;, &apos;retrieval_gt&apos;, &apos;generation_gt&apos;]</li>
-                      <li><strong>Corpus data:</strong> columns [&apos;doc_id&apos;, &apos;contents&apos;, &apos;metadata&apos; (optional)]</li>
-                      <li><strong>Supported formats:</strong> .parquet, .csv, .json</li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+
 
             {/* Loading and Error States */}
             {isLoadingBenchmarks && (
@@ -1460,10 +1429,9 @@ function EvaluationInterface({
                           <div>
                             <h3 className="text-lg font-medium">No benchmarks found</h3>
                             <p className="text-sm text-muted-foreground">
-                              Upload your first benchmark dataset to get started
+                              Contact your administrator to add benchmark datasets
                             </p>
                           </div>
-                          <Button onClick={handleCreateBenchmark}>Upload Benchmark</Button>
                         </div>
                       </CardContent>
                     </Card>
