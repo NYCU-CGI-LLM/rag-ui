@@ -20,7 +20,13 @@ async function handler(req: NextRequest) {
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
-  
+
+  // Log the incoming request headers
+  // console.log('[API PROXY] Incoming request headers:');
+  // for (const [key, value] of req.headers.entries()) {
+  //   console.log(`${key}: ${value}`);
+  // }
+
   const { pathname, search } = new URL(req.url);
   let slug = pathname.replace('/api/', '');
   
@@ -60,6 +66,7 @@ async function handler(req: NextRequest) {
   headers.delete('x-forwarded-for');
   headers.delete('x-forwarded-proto');
   headers.delete('content-length'); // Let fetch calculate this automatically
+  headers.delete('connection');
 
   try {
     let body: any = undefined;
