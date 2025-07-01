@@ -753,7 +753,20 @@ function EvaluationInterface({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [results, setResults] = useState<EvaluationResults[]>([]);
   const [activeTab, setActiveTab] = useState("run");
+  
+  // Benchmark management state
+  const [benchmarks, setBenchmarks] = useState<ApiBenchmarkDataset[]>([]);
+  const [isLoadingBenchmarks, setIsLoadingBenchmarks] = useState(false);
+  const [benchmarksError, setBenchmarksError] = useState<string | null>(null);
+  const [selectedBenchmark, setSelectedBenchmark] = useState<ApiBenchmarkDataset | null>(null);
+  const [showBenchmarkDetail, setShowBenchmarkDetail] = useState(false);
+  const [isCreatingBenchmark, setIsCreatingBenchmark] = useState(false);
+  const [showCreateBenchmarkForm, setShowCreateBenchmarkForm] = useState(false);
   const [evaluationName, setEvaluationName] = useState<string>("");
+  
+  // Store benchmark details with evaluation metrics for cards
+  const [benchmarkDetails, setBenchmarkDetails] = useState<Map<string, ApiBenchmarkDatasetDetail>>(new Map());
+  const [loadingBenchmarkDetails, setLoadingBenchmarkDetails] = useState<Set<string>>(new Set());
   
   // Evaluation configuration state
   const [embeddingModel, setEmbeddingModel] = useState<string>("openai_embed_3_large");
@@ -853,6 +866,22 @@ function EvaluationInterface({
     fetchEmbeddingModels();
   }, []);
 
+  // Fetch benchmarks when the benchmarks tab is activated
+  useEffect(() => {
+    if (activeTab === 'benchmarks') {
+      fetchBenchmarks();
+    }
+  }, [activeTab]);
+
+  // Fetch benchmark details for all loaded benchmarks
+  useEffect(() => {
+    if (benchmarks.length > 0) {
+      benchmarks.forEach(benchmark => {
+        fetchBenchmarkDetailsForCard(benchmark.id);
+      });
+    }
+  }, [benchmarks]);
+
   // Fetch benchmark details when a benchmark source is selected
   useEffect(() => {
     if (selectedSource && currentSourceDetails?.type === 'benchmark') {
@@ -864,6 +893,107 @@ function EvaluationInterface({
       setBenchmarkDetailError(null);
     }
   }, [selectedSource, currentSourceDetails?.type]);
+
+  // Fetch benchmarks for management
+  const fetchBenchmarks = async () => {
+    try {
+      setIsLoadingBenchmarks(true);
+      setBenchmarksError(null);
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/eval/benchmarks/?skip=0&limit=100&include_inactive=true`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch benchmarks: ${response.status}`);
+      }
+
+      const data: ApiBenchmarkDataset[] = await response.json();
+      setBenchmarks(data);
+    } catch (error) {
+      console.error('Failed to fetch benchmarks:', error);
+      setBenchmarksError(error instanceof Error ? error.message : 'Failed to fetch benchmarks');
+    } finally {
+      setIsLoadingBenchmarks(false);
+    }
+  };
+
+  // Refresh benchmarks list
+  const refreshBenchmarks = () => {
+    fetchBenchmarks();
+  };
+
+  // Handle benchmark creation
+  const handleCreateBenchmark = () => {
+    setShowCreateBenchmarkForm(true);
+  };
+
+  // Handle benchmark selection for details
+  const handleSelectBenchmark = (benchmark: ApiBenchmarkDataset) => {
+    setSelectedBenchmark(benchmark);
+    setShowBenchmarkDetail(true);
+  };
+
+  // Handle benchmark deletion
+  const handleDeleteBenchmark = async (benchmarkId: string) => {
+    if (!confirm('Are you sure you want to delete this benchmark? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/eval/benchmarks/${benchmarkId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete benchmark: ${response.status}`);
+      }
+
+      // Refresh the benchmarks list
+      await fetchBenchmarks();
+    } catch (error) {
+      console.error('Failed to delete benchmark:', error);
+      alert(`Failed to delete benchmark: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Fetch benchmark details for cards (evaluation metrics)
+  const fetchBenchmarkDetailsForCard = async (benchmarkId: string) => {
+    // Skip if already loaded or currently loading
+    if (benchmarkDetails.has(benchmarkId) || loadingBenchmarkDetails.has(benchmarkId)) {
+      return;
+    }
+
+    try {
+      setLoadingBenchmarkDetails(prev => new Set([...prev, benchmarkId]));
+      
+      if (!API_URL) {
+        throw new Error('API_URL not configured');
+      }
+
+      const response = await fetch(`${API_URL}/eval/benchmarks/${benchmarkId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch benchmark details: ${response.status}`);
+      }
+
+      const data: ApiBenchmarkDatasetDetail = await response.json();
+      setBenchmarkDetails(prev => new Map([...prev, [benchmarkId, data]]));
+    } catch (error) {
+      console.error('Failed to fetch benchmark details for card:', error);
+      // Don't show error to user since this is background loading
+    } finally {
+      setLoadingBenchmarkDetails(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(benchmarkId);
+        return newSet;
+      });
+    }
+  };
 
   // Fetch evaluation results from API
   const fetchEvaluationResults = async () => {
@@ -1441,10 +1571,238 @@ function EvaluationInterface({
   return (
     <div className="space-y-6 p-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="benchmarks">Manage Benchmarks</TabsTrigger>
           <TabsTrigger value="run">Run Evaluation</TabsTrigger>
           <TabsTrigger value="results">View Results</TabsTrigger>
         </TabsList>
+        
+        <TabsContent value="benchmarks" className="pt-4">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Manage Benchmarks</h2>
+                <p className="text-muted-foreground">
+                  Upload, view, and manage evaluation benchmark datasets
+                </p>
+              </div>
+              <Button onClick={handleCreateBenchmark} className="flex items-center gap-2">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Upload Benchmark
+              </Button>
+            </div>
+
+            {/* Upload format reminder */}
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="text-sm">
+                    <p className="font-medium text-blue-900 mb-1">File Format Requirements</p>
+                    <p className="text-blue-800">Files should contain:</p>
+                    <ul className="list-disc list-inside mt-1 text-blue-700 space-y-1">
+                      <li><strong>QA data:</strong> columns ['qid', 'query', 'retrieval_gt', 'generation_gt']</li>
+                      <li><strong>Corpus data:</strong> columns ['doc_id', 'contents', 'metadata' (optional)]</li>
+                      <li><strong>Supported formats:</strong> .parquet, .csv, .json</li>
+                    </ul>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Loading and Error States */}
+            {isLoadingBenchmarks && (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center space-x-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Loading benchmarks...</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {benchmarksError && (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="text-center space-y-2">
+                    <p className="text-red-600 font-medium">Error loading benchmarks</p>
+                    <p className="text-sm text-red-600">{benchmarksError}</p>
+                    <Button onClick={refreshBenchmarks} variant="outline" size="sm">
+                      Try Again
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Benchmarks Grid */}
+            {!isLoadingBenchmarks && !benchmarksError && (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {benchmarks.length === 0 ? (
+                  <div className="col-span-full">
+                    <Card>
+                      <CardContent className="p-8">
+                        <div className="text-center space-y-4">
+                          <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                            <svg className="h-6 w-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-medium">No benchmarks found</h3>
+                            <p className="text-sm text-muted-foreground">
+                              Upload your first benchmark dataset to get started
+                            </p>
+                          </div>
+                          <Button onClick={handleCreateBenchmark}>Upload Benchmark</Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  benchmarks.map((benchmark) => (
+                    <Card 
+                      key={benchmark.id} 
+                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleSelectBenchmark(benchmark)}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1 flex-1">
+                            <CardTitle className="text-base">{benchmark.name}</CardTitle>
+                          </div>
+                          <div className="relative">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteBenchmark(benchmark.id);
+                              }}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="space-y-3">
+                          {benchmark.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {benchmark.description}
+                            </p>
+                          )}
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="font-medium">Queries:</span>
+                              <span className="ml-1 text-muted-foreground">{benchmark.total_queries.toLocaleString()}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Language:</span>
+                              <span className="ml-1 text-muted-foreground">{benchmark.language}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Version:</span>
+                              <span className="ml-1 text-muted-foreground">{benchmark.version}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Created:</span>
+                              <span className="ml-1 text-muted-foreground">
+                                {new Date(benchmark.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Evaluation Metrics Section */}
+                          <div className="pt-2 border-t">
+                            <div className="text-sm">
+                              <span className="font-medium">Available Metrics:</span>
+                              {loadingBenchmarkDetails.has(benchmark.id) ? (
+                                <div className="flex items-center space-x-2 mt-1">
+                                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  <span className="text-xs text-muted-foreground">Loading...</span>
+                                </div>
+                              ) : (
+                                (() => {
+                                  const details = benchmarkDetails.get(benchmark.id);
+                                  if (!details?.evaluation_metrics) {
+                                    return (
+                                      <p className="text-xs text-muted-foreground mt-1">No metrics information</p>
+                                    );
+                                  }
+                                  
+                                  const { retrieval = [], generation = [] } = details.evaluation_metrics;
+                                  const totalMetrics = retrieval.length + generation.length;
+                                  
+                                  if (totalMetrics === 0) {
+                                    return (
+                                      <p className="text-xs text-muted-foreground mt-1">No metrics available</p>
+                                    );
+                                  }
+                                  
+                                  return (
+                                    <div className="mt-1 space-y-2">
+                                      {retrieval.length > 0 && (
+                                        <div>
+                                          <div className="text-xs font-medium text-blue-600 mb-1">Retrieval:</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {retrieval.slice(0, 3).map((metric, idx) => (
+                                              <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800">
+                                                {metric}
+                                              </span>
+                                            ))}
+                                            {retrieval.length > 3 && (
+                                              <span className="text-xs text-muted-foreground">+{retrieval.length - 3} more</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {generation.length > 0 && (
+                                        <div>
+                                          <div className="text-xs font-medium text-green-600 mb-1">Generation:</div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {generation.slice(0, 3).map((metric, idx) => (
+                                              <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-800">
+                                                {metric}
+                                              </span>
+                                            ))}
+                                            {generation.length > 3 && (
+                                              <span className="text-xs text-muted-foreground">+{generation.length - 3} more</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </TabsContent>
         
         <TabsContent value="run" className="pt-4">
           <Card>
