@@ -20,10 +20,44 @@ async function handler(req: NextRequest) {
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
-  
+
+  // Log the incoming request headers
+  // console.log('[API PROXY] Incoming request headers:');
+  // for (const [key, value] of req.headers.entries()) {
+  //   console.log(`${key}: ${value}`);
+  // }
+
   const { pathname, search } = new URL(req.url);
-  const slug = pathname.replace('/api/', '');
+  let slug = pathname.replace('/api/', '');
+  
+  // Handle FastAPI routing requirements - add trailing slash for specific endpoints
+  // This fixes browser URL normalization that removes trailing slashes
+  const endpointsThatNeedTrailingSlash = [
+    'eval/benchmarks',
+    'library',
+    'chat',
+    'retriever',
+    'config',
+    'parser',
+    'chunker',
+    'indexer'
+  ];
+  
+  const shouldAddTrailingSlash = endpointsThatNeedTrailingSlash.some(endpoint => 
+    slug === endpoint || slug === `${endpoint}/`
+  );
+  
+  if (shouldAddTrailingSlash && !slug.endsWith('/')) {
+    slug = `${slug}/`;
+  }
+  
   const apiUrl = `${BACKEND_URL}/${slug}${search}`;
+  
+  // // Debug logging
+  // console.log(`[API PROXY] Request: ${req.method} ${req.url}`);
+  // console.log(`[API PROXY] Pathname: ${pathname}`);
+  // console.log(`[API PROXY] Slug: ${slug}`);
+  // console.log(`[API PROXY] Target URL: ${apiUrl}`);
 
   // Prepare headers for backend request
   const headers = new Headers(req.headers);
@@ -32,6 +66,7 @@ async function handler(req: NextRequest) {
   headers.delete('x-forwarded-for');
   headers.delete('x-forwarded-proto');
   headers.delete('content-length'); // Let fetch calculate this automatically
+  headers.delete('connection');
 
   try {
     let body: any = undefined;
