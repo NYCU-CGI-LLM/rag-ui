@@ -27,231 +27,19 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { CreateRetrieverDialog } from "@/components/CreateRetrieverDialog";
+import { 
+  GENERATOR_PARAM_DEFINITIONS, 
+  MAX_TOKEN_DICT,
+  ParameterDefinition
+} from "@/lib/generators";
 
-
+const BETA_MODE = true;
 
 // Default generator configuration for chat sessions
 interface ChatGeneratorConfig {
   moduleId: string;
   parameterValues: { [paramId: string]: string | number | boolean };
 }
-
-// Parameter definitions for different generator types
-interface ParameterDefinition {
-  id: string;
-  name: string;
-  type: 'string' | 'number' | 'boolean' | 'select';
-  defaultValue: string | number | boolean;
-  options?: string[];
-  description?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-}
-
-// OpenAI model token limits (same as eval page)
-const MAX_TOKEN_DICT: { [key: string]: number } = {
-  "gpt-4.5-preview": 128_000,
-  "gpt-4.5-preview-2025-02-27": 128_000,
-  "o1": 200_000,
-  "o1-preview": 128_000,
-  "o1-preview-2024-09-12": 128_000,
-  "o1-mini": 128_000,
-  "o1-mini-2024-09-12": 128_000,
-  "o3-mini": 200_000,
-  "gpt-4o-mini": 128_000,
-  "gpt-4o-mini-2024-07-18": 128_000,
-  "gpt-4o": 128_000,
-  "gpt-4o-2024-08-06": 128_000,
-  "gpt-4o-2024-05-13": 128_000,
-  "chatgpt-4o-latest": 128_000,
-  "gpt-4-turbo": 128_000,
-  "gpt-4-turbo-2024-04-09": 128_000,
-  "gpt-4-turbo-preview": 128_000,
-  "gpt-4-0125-preview": 128_000,
-  "gpt-4-1106-preview": 128_000,
-  "gpt-4-vision-preview": 128_000,
-  "gpt-4-1106-vision-preview": 128_000,
-  "gpt-4": 8_192,
-  "gpt-4-0613": 8_192,
-  "gpt-4-32k": 32_768,
-  "gpt-4-32k-0613": 32_768,
-  "gpt-3.5-turbo-0125": 16_385,
-  "gpt-3.5-turbo": 16_385,
-  "gpt-3.5-turbo-1106": 16_385,
-  "gpt-3.5-turbo-instruct": 4_096,
-  "gpt-3.5-turbo-16k": 16_385,
-  "gpt-3.5-turbo-0613": 4_096,
-  "gpt-3.5-turbo-16k-0613": 16_385,
-};
-
-// Generator parameter definitions
-const GENERATOR_PARAM_DEFINITIONS: { [generatorId: string]: ParameterDefinition[] } = {
-  openai_llm: [
-    { 
-      id: "llm", 
-      name: "LLM Model", 
-      type: "select", 
-      defaultValue: "gpt-4o-mini", 
-      options: [
-        "gpt-4.5-preview",
-        "gpt-4.5-preview-2025-02-27",
-        "o1",
-        "o1-preview",
-        "o1-preview-2024-09-12",
-        "o1-mini",
-        "o1-mini-2024-09-12",
-        "o3-mini",
-        "gpt-4o-mini",
-        "gpt-4o-mini-2024-07-18",
-        "gpt-4o",
-        "gpt-4o-2024-08-06",
-        "gpt-4o-2024-05-13",
-        "chatgpt-4o-latest",
-        "gpt-4-turbo",
-        "gpt-4-turbo-2024-04-09",
-        "gpt-4-turbo-preview",
-        "gpt-4-0125-preview",
-        "gpt-4-1106-preview",
-        "gpt-4-vision-preview",
-        "gpt-4-1106-vision-preview",
-        "gpt-4",
-        "gpt-4-0613",
-        "gpt-4-32k",
-        "gpt-4-32k-0613",
-        "gpt-3.5-turbo-0125",
-        "gpt-3.5-turbo",
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo-instruct",
-        "gpt-3.5-turbo-16k",
-        "gpt-3.5-turbo-0613",
-        "gpt-3.5-turbo-16k-0613"
-      ],
-      description: "OpenAI model to use for generation."
-    },
-    { 
-      id: "max_tokens", 
-      name: "Max Tokens", 
-      type: "number", 
-      defaultValue: 4096, 
-      min: 1, 
-      max: 200000, 
-      step: 1,
-      description: "Maximum number of tokens to generate."
-    },
-    { 
-      id: "temperature", 
-      name: "Temperature", 
-      type: "number", 
-      defaultValue: 0.7, 
-      min: 0.0, 
-      max: 2.0, 
-      step: 0.1,
-      description: "Controls randomness in generation."
-    },
-    { 
-      id: "top_p", 
-      name: "Top P", 
-      type: "number", 
-      defaultValue: 1.0, 
-      min: 0.0, 
-      max: 1.0, 
-      step: 0.01,
-      description: "Controls diversity via nucleus sampling."
-    }
-  ],
-  vllm: [
-    { 
-      id: "llm", 
-      name: "LLM Model", 
-      type: "string", 
-      defaultValue: "meta-llama/Llama-2-7b-chat-hf",
-      description: "Model name or path for vLLM."
-    },
-    { 
-      id: "max_tokens", 
-      name: "Max Tokens", 
-      type: "number", 
-      defaultValue: 256, 
-      min: 1, 
-      max: 4096, 
-      step: 1,
-      description: "Maximum number of tokens to generate."
-    },
-    { 
-      id: "temperature", 
-      name: "Temperature", 
-      type: "number", 
-      defaultValue: 0.7, 
-      min: 0.0, 
-      max: 2.0, 
-      step: 0.1,
-      description: "Controls randomness in generation."
-    }
-  ],
-  vllm_api: [
-    { 
-      id: "llm", 
-      name: "LLM Model", 
-      type: "string", 
-      defaultValue: "meta-llama/Llama-2-7b-chat-hf",
-      description: "Model name for vLLM API."
-    },
-    { 
-      id: "max_tokens", 
-      name: "Max Tokens", 
-      type: "number", 
-      defaultValue: 256, 
-      min: 1, 
-      max: 4096, 
-      step: 1,
-      description: "Maximum number of tokens to generate."
-    },
-    { 
-      id: "temperature", 
-      name: "Temperature", 
-      type: "number", 
-      defaultValue: 0.7, 
-      min: 0.0, 
-      max: 2.0, 
-      step: 0.1,
-      description: "Controls randomness in generation."
-    }
-  ],
-  llama_index_llm: [
-    { 
-      id: "llm", 
-      name: "LLM Model", 
-      type: "string", 
-      defaultValue: "gpt-3.5-turbo",
-      description: "Model name for LlamaIndex LLM."
-    },
-    { 
-      id: "max_tokens", 
-      name: "Max Tokens", 
-      type: "number", 
-      defaultValue: 256, 
-      min: 1, 
-      max: 4096, 
-      step: 1,
-      description: "Maximum number of tokens to generate."
-    },
-    { 
-      id: "temperature", 
-      name: "Temperature", 
-      type: "number", 
-      defaultValue: 0.7, 
-      min: 0.0, 
-      max: 2.0, 
-      step: 0.1,
-      description: "Controls randomness in generation."
-    }
-  ]
-};
-
-
-
-
 
 // Chat session interface - now includes generator config
 interface ChatSession {
@@ -260,8 +48,6 @@ interface ChatSession {
   timestamp: string;
   generatorConfig: ChatGeneratorConfig; // Add generator config to chat session
 }
-
-
 
 // Chat message component for better structure
 interface Message {
