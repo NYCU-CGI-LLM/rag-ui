@@ -29,11 +29,8 @@ import { Badge } from "@/components/ui/badge";
 import { CreateRetrieverDialog } from "@/components/CreateRetrieverDialog";
 import { 
   GENERATOR_PARAM_DEFINITIONS, 
-  MAX_TOKEN_DICT,
-  ParameterDefinition
+  MAX_TOKEN_DICT
 } from "@/lib/generators";
-
-const BETA_MODE = true;
 
 // Default generator configuration for chat sessions
 interface ChatGeneratorConfig {

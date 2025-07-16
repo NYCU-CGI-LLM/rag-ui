@@ -46,11 +46,8 @@ import {
   MAX_TOKEN_DICT, 
   Module, 
   ModuleType, 
-  ParameterDefinition,
   OPENAI_LLM_MODELS_FOR_EVAL
 } from "@/lib/generators";
-
-const BETA_MODE = true;
 
 // API Configuration
 const API_URL = "/api";
